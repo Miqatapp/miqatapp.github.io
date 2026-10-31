@@ -61,7 +61,7 @@
     <div class="empty-icon"></div>
     <div class="empty-t">اضغط على أي مدينة أو دولة</div>
     <div class="empty-s">أو استخدم <b>موقعي</b> لأوقاتك بالضبط</div>
-    <button class="empty-d" id="emptyDonate">💛 ادعم ميقات</button>
+    <div class="empty-links"><button class="empty-d set" id="emptySettings">⚙️ الإعدادات</button><button class="empty-d" id="emptyDonate">💛 ادعم ميقات</button></div>
   </div>
   <div id="sheetBody" class="hidden">
     <div class="place">
@@ -87,7 +87,7 @@
     </div>
     <div class="times" id="times"></div>
     <div class="meta">
-      <div class="qibla">
+      <div class="qibla" id="qBox" role="button" tabindex="0">
         <div class="compass"><span id="qArrow"></span></div>
         <div>
           <div class="muted">القبلة</div>
@@ -101,7 +101,7 @@
     </div>
     <div class="actions">
       <button class="btn" id="btnHome">اجعلها مدينتي</button>
-      <button class="btn ghost" id="btnAlarm">🔔 تنبيهات الأذان</button>
+      <button class="btn ghost" id="btnAlarm">⚙️ الإعدادات</button>
     </div>
   </div>
 </section>
@@ -118,11 +118,13 @@
   <div class="panel glass">
     <div class="panel-h">
       <div>
-        <div class="panel-t">تنبيهات الأذان</div>
+        <div class="panel-t">الإعدادات</div>
         <div class="muted" id="aHome"></div>
       </div>
       <button class="ib" id="closeAlarm" aria-label="إغلاق"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
+
+    <h4 class="sec">الأذان</h4>
     <div id="aList" class="alist"></div>
     <div class="row">
       <div>
@@ -137,6 +139,77 @@
     </div>
     <div id="aWarn" class="warn hidden"></div>
     <div class="muted small-note" id="aNote"></div>
+
+    <h4 class="sec">التذكير</h4>
+    <div class="row col">
+      <div>تذكير قبل الأذان</div>
+      <div class="seg" id="preSeg">
+        <button data-v="0">إيقاف</button><button data-v="5">5 د</button><button data-v="10">10 د</button><button data-v="15">15 د</button><button data-v="30">30 د</button>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <div>تذكير الجمعة</div>
+        <div class="muted">قبل صلاة الجمعة بـ 45 دقيقة</div>
+      </div>
+      <button class="sw" id="swJum" aria-label="تذكير الجمعة"></button>
+    </div>
+
+    <h4 class="sec">ضبط الأوقات بالدقيقة</h4>
+    <div class="muted small-note">إذا مسجد حيّك يختلف بدقيقة أو دقيقتين، عدّلها هنا. التعديل يطبّق على مدينتك بس.</div>
+    <div id="adjList" class="alist"></div>
+
+    <div id="widgetBox" class="hidden">
+      <h4 class="sec">الويدجت</h4>
+      <div class="muted small-note">اضغط مطوّلاً على مكان فاضي في الشاشة الرئيسية، اختر "الأدوات"، دوّر على ميقات واسحبه للشاشة. يعرض لك الأذان القادم والعداد وأوقات الصلوات الجاية.</div>
+    </div>
+
+    <h4 class="sec">عن ميقات</h4>
+    <div class="row">
+      <div>
+        <div>الإصدار</div>
+        <div class="muted" id="aVer"></div>
+      </div>
+      <button class="btn small ghost" id="btnUpd">تحقق من التحديث</button>
+    </div>
+    <div class="row">
+      <div>
+        <div>تواصل معنا</div>
+        <div class="muted" dir="ltr">miqatsa09@gmail.com</div>
+      </div>
+      <button class="btn small ghost" id="btnMail">راسلنا</button>
+    </div>
+    <div class="row">
+      <div>موقع ميقات</div>
+      <button class="btn small ghost" id="btnSite">افتح</button>
+    </div>
+  </div>
+</div>
+
+<div id="compass" class="overlay hidden">
+  <div class="cmp glass">
+    <div class="panel-h">
+      <div class="panel-t">اتجاه القبلة</div>
+      <button class="ib" id="closeCompass" aria-label="إغلاق"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="cmp-box">
+      <div class="cmp-pointer"></div>
+      <svg class="cmp-dial" id="cmpDial" viewBox="-160 -160 320 320"></svg>
+      <div class="cmp-center"></div>
+    </div>
+    <div class="cmp-deg" id="cmpDeg">—</div>
+    <div class="muted cmp-hint" id="cmpHint">خلّ الجوال مستوي، ولفّ لين يصير الكعبة تحت السهم.</div>
+  </div>
+</div>
+
+<div id="update" class="hidden">
+  <div class="upd glass">
+    <div class="upd-t" id="updT"></div>
+    <div class="muted" id="updN"></div>
+    <div class="upd-a">
+      <button class="btn small" id="updGo">حدّث الآن</button>
+      <button class="btn small ghost" id="updLater">لاحقاً</button>
+    </div>
   </div>
 </div>
 
