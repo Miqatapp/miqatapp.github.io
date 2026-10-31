@@ -1,8 +1,9 @@
 {
- "versionCode": 6,
- "versionName": "1.5",
+ "versionCode": 7,
+ "versionName": "1.6",
  "url": "https://ziad1000hid2009-prog.github.io/miqat/Miqat.apk",
  "notes": [
-  "شاشة الأذان فوق قفل الشاشة مع زر إيقاف"
+  "صوت الأذان",
+  "خيار إشعار فقط بدل الأذان"
  ]
 }
