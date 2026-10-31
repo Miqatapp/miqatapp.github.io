@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>ميقات</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="loader">
+  <div class="ld-moon"></div>
+  <div class="ld-title">ميقات</div>
+  <div class="ld-sub">نجهّز الكرة الأرضية…</div>
+</div>
+
+<header id="top">
+  <div class="brand">
+    <span class="brand-mark"></span>
+    <div>
+      <div class="brand-name">ميقات</div>
+      <div class="brand-date" id="hijri"></div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="ib heart" id="btnDonate" aria-label="ادعم ميقات">
+      <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></svg>
+    </button>
+    <button class="ib" id="btnLines" aria-label="خطوط الأذان" title="خطوط الأذان">
+      <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/><path d="M12 3c-2.5 2.6-3.8 5.6-3.8 9s1.3 6.4 3.8 9"/><path d="M3.5 9h17M3.5 15h17"/></svg>
+    </button>
+    <button class="ib" id="btnSearch" aria-label="بحث">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+    </button>
+    <button class="ib accent" id="btnLocate" aria-label="موقعي">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="7.5"/></svg>
+    </button>
+  </div>
+</header>
+
+<div id="ticker" class="glass hidden"><span class="pulse-dot"></span><span id="tickerText"></span></div>
+
+<div id="legend" class="hidden">
+  <span><i style="--c:#8cbfff"></i>فجر</span>
+  <span><i style="--c:#ffee8c"></i>ظهر</span>
+  <span><i style="--c:#ffb84d"></i>عصر</span>
+  <span><i style="--c:#ff6b52"></i>مغرب</span>
+  <span><i style="--c:#c08cff"></i>عشاء</span>
+</div>
+
+<div id="label" class="hidden"></div>
+<div id="credit" style="opacity:0">Imagery: NASA GIBS · Sentinel-2 cloudless 2016 by EOX (Copernicus)</div>
+
+<section id="sheet" class="glass">
+  <div class="handle" id="handle"><span></span></div>
+  <div id="sheetEmpty" class="empty">
+    <div class="empty-icon"></div>
+    <div class="empty-t">اضغط على أي مدينة أو دولة</div>
+    <div class="empty-s">أو استخدم <b>موقعي</b> لأوقاتك بالضبط</div>
+    <button class="empty-d" id="emptyDonate">💛 ادعم ميقات</button>
+  </div>
+  <div id="sheetBody" class="hidden">
+    <div class="place">
+      <div>
+        <div class="place-name" id="pName"></div>
+        <div class="place-sub" id="pSub"></div>
+      </div>
+      <div class="place-clock">
+        <div id="pClock"></div>
+        <div class="muted" id="pTz"></div>
+      </div>
+    </div>
+    <div class="next">
+      <div class="next-l">
+        <div class="muted">الأذان القادم</div>
+        <div class="next-name" id="nName"></div>
+        <div class="muted" id="nAt"></div>
+      </div>
+      <div class="next-r">
+        <div class="countdown" id="nCount"></div>
+        <div class="bar"><span id="nBar"></span></div>
+      </div>
+    </div>
+    <div class="times" id="times"></div>
+    <div class="meta">
+      <div class="qibla">
+        <div class="compass"><span id="qArrow"></span></div>
+        <div>
+          <div class="muted">القبلة</div>
+          <div id="qText"></div>
+        </div>
+      </div>
+      <div class="method">
+        <div class="muted">طريقة الحساب</div>
+        <div id="mText"></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnHome">اجعلها مدينتي</button>
+      <button class="btn ghost" id="btnAlarm">🔔 تنبيهات الأذان</button>
+    </div>
+  </div>
+</section>
+
+<div id="search" class="overlay hidden">
+  <div class="search-box glass">
+    <input id="q" type="search" placeholder="ابحث عن مدينة أو دولة…" autocomplete="off">
+    <button class="ib" id="closeSearch" aria-label="إغلاق"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <div id="results" class="results"></div>
+</div>
+
+<div id="alarm" class="overlay hidden">
+  <div class="panel glass">
+    <div class="panel-h">
+      <div>
+        <div class="panel-t">تنبيهات الأذان</div>
+        <div class="muted" id="aHome"></div>
+      </div>
+      <button class="ib" id="closeAlarm" aria-label="إغلاق"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="aList" class="alist"></div>
+    <div class="row">
+      <div>
+        <div>صوت الأذان</div>
+        <div class="muted" id="aSound">النغمة الافتراضية</div>
+      </div>
+      <button class="btn small ghost" id="btnPick">اختر صوت</button>
+    </div>
+    <div class="row">
+      <div>تجربة الصوت</div>
+      <button class="btn small ghost" id="btnTest">▶ جرّب</button>
+    </div>
+    <div id="aWarn" class="warn hidden"></div>
+    <div class="muted small-note" id="aNote"></div>
+  </div>
+</div>
+
+<div id="donate" class="overlay hidden">
+  <div class="panel glass donate">
+    <div class="panel-h">
+      <div class="panel-t">ادعم ميقات 💛</div>
+      <button class="ib" id="closeDonate" aria-label="إغلاق"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <p class="d-text">ميقات مجاني بالكامل وبدون إعلانات. إذا أعجبك وتبي تساعد في تطويره، تقدر تدعمه بأي مبلغ بتحويل بنكي من تطبيق بنكك.</p>
+    <div class="d-field">
+      <div class="muted">اسم المستفيد</div>
+      <div class="d-row"><div class="d-val" dir="ltr" id="dName"></div><button class="btn small ghost" data-copy="dName">نسخ</button></div>
+    </div>
+    <div class="d-field">
+      <div class="muted">رقم الآيبان</div>
+      <div class="d-row"><div class="d-val mono" dir="ltr" id="dIban"></div><button class="btn small" data-copy="dIban">نسخ</button></div>
+    </div>
+    <p class="muted d-note">جزاك الله خير، أي دعم يفرق 🤍</p>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
