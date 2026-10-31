@@ -8,6 +8,10 @@
   if (!gl || reduce || saveData) { f.remove(); return; }
   f.addEventListener('load', () => setTimeout(() => f.classList.add('ready'), 2600));
   f.src = 'app/?embed';
+  // نوقف رسم الكرة لما تنزل تحت عشان الصفحة تظل سلسة
+  new IntersectionObserver(([e]) => {
+    try { f.contentWindow.postMessage(e.isIntersecting ? 'resume' : 'pause', '*'); } catch (err) {}
+  }, { threshold: 0.05 }).observe(f);
 })();
 
 // نسخ بيانات التحويل
