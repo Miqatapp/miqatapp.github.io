@@ -1,11 +1,8 @@
 {
- "versionCode": 5,
- "versionName": "1.4",
+ "versionCode": 6,
+ "versionName": "1.5",
  "url": "https://ziad1000hid2009-prog.github.io/miqat/Miqat.apk",
  "notes": [
-  "ويدجت للشاشة الرئيسية",
-  "بوصلة القبلة",
-  "تذكير قبل الأذان والجمعة",
-  "ضبط الأوقات بالدقيقة"
+  "شاشة الأذان فوق قفل الشاشة مع زر إيقاف"
  ]
 }

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>الأذان</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body style="overflow:hidden">
+<div class="adhan-screen" id="as"></div>
+<script>
+// شاشة الأذان اللي تطلع فوق قفل الشاشة (داخل تطبيق أندرويد)
+(function () {
+  const q = new URLSearchParams(location.search);
+  const ui = window.AdhanUI;
+  if (ui && ui.insets) { const [t, b] = ui.insets().split(','); document.documentElement.style.setProperty('--sat', t + 'px'); document.documentElement.style.setProperty('--sab', b + 'px'); }
+  document.getElementById('as').innerHTML =
+    '<div class="as-orb"><i></i><i></i><i></i><div class="as-moon"></div></div>' +
+    '<div class="as-k">حان الآن موعد أذان</div>' +
+    '<div class="as-name"></div>' +
+    '<div class="as-meta"></div>' +
+    '<p class="as-dua">اللهم رب هذه الدعوة التامة، والصلاة القائمة، آتِ محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته</p>' +
+    '<button class="as-stop" id="stop">إيقاف الأذان</button>';
+  document.querySelector('.as-name').textContent = q.get('name') || '';
+  document.querySelector('.as-meta').textContent = [q.get('time'), q.get('city')].filter(Boolean).join('، ');
+  const stop = document.getElementById('stop');
+  stop.onclick = () => { if (ui) ui.stop(); };
+  window.onAdhanEnded = () => { stop.textContent = 'تم'; };
+})();
+</script>
+</body>
+</html>
