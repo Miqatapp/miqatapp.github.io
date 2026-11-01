@@ -1,8 +1,9 @@
 {
- "versionCode": 10,
- "versionName": "1.9",
+ "versionCode": 11,
+ "versionName": "2.0",
  "url": "https://miqatapp.github.io/Miqat.apk",
  "notes": [
-  "إصلاح صوت الأذان: كان يبدأ بمقطع زايد ويعيد التكبير"
+  "زر التجربة صار يفتح شاشة الأذان مباشرة",
+  "إصلاح صوت الأذان"
  ]
 }
