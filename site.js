@@ -36,6 +36,6 @@
     const sDl = document.getElementById('sDl'), sVis = document.getElementById('sVis');
     sDl.textContent = dl.toLocaleString('en'); sVis.textContent = vis.toLocaleString('en');
     sDl.parentElement.hidden = dl <= MIN; sVis.parentElement.hidden = vis <= MIN;
-    if (dl > MIN || vis > MIN) document.getElementById('stats').hidden = false;
+    if (dl > MIN || vis > MIN) { document.getElementById('stats').hidden = false; document.getElementById('statsLink').hidden = false; }
   });
 })();
