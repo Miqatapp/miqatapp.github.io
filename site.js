@@ -29,10 +29,13 @@
 (function () {
   const base = 'https://miqatapp.goatcounter.com/counter/';
   const get = (p) => fetch(base + encodeURIComponent(p) + '.json').then((r) => r.ok ? r.json() : null).catch(() => null);
+  const num = (r) => r ? parseInt(String(r.count).replace(/\D/g, ''), 10) || 0 : 0;
+  const MIN = 100; // ما نعرض الرقم إلا إذا تعدّى 100
   Promise.all([get('download-apk'), get('TOTAL')]).then(([d, v]) => {
-    if (!d && !v) return;
-    if (d) document.getElementById('sDl').textContent = d.count;
-    if (v) document.getElementById('sVis').textContent = v.count;
-    document.getElementById('stats').hidden = false;
+    const dl = num(d), vis = num(v);
+    const sDl = document.getElementById('sDl'), sVis = document.getElementById('sVis');
+    sDl.textContent = dl.toLocaleString('en'); sVis.textContent = vis.toLocaleString('en');
+    sDl.parentElement.hidden = dl <= MIN; sVis.parentElement.hidden = vis <= MIN;
+    if (dl > MIN || vis > MIN) document.getElementById('stats').hidden = false;
   });
 })();

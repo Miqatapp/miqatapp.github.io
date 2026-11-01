@@ -153,3 +153,4 @@ h3 { font-family: Reem, Tajawal, serif; font-size: 1.35rem; margin: 0 0 .6rem; }
 .stats { display: flex; gap: 1.4rem; margin-top: 1.2rem; font-size: 1rem; color: rgba(255,255,255,.75); animation: rise 1s var(--ease) both .35s; }
 .stats b { color: var(--gold); font-size: 1.35rem; margin-inline-end: .3rem; font-variant-numeric: tabular-nums; }
 .stats[hidden] { display: none; }
+.stats span[hidden] { display: none; }
