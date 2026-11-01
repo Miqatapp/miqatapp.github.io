@@ -237,5 +237,11 @@
 <div id="toast" class="hidden"></div>
 
 <script type="module" src="app.js"></script>
+<script>
+if (location.hostname === 'miqatapp.github.io' && !location.search.includes('embed')) {
+  const g = document.createElement('script'); g.async = true; g.src = 'https://gc.zgo.at/count.js';
+  g.dataset.goatcounter = 'https://miqatapp.goatcounter.com/count'; document.body.appendChild(g);
+}
+</script>
 </body>
 </html>

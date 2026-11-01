@@ -24,3 +24,15 @@
     catch (e) { show('انسخه يدوي بالضغط المطوّل'); }
   }));
 })();
+
+// عدّاد الزيارات والتحميلات (GoatCounter، بدون كوكيز)
+(function () {
+  const base = 'https://miqatapp.goatcounter.com/counter/';
+  const get = (p) => fetch(base + encodeURIComponent(p) + '.json').then((r) => r.ok ? r.json() : null).catch(() => null);
+  Promise.all([get('download-apk'), get('TOTAL')]).then(([d, v]) => {
+    if (!d && !v) return;
+    if (d) document.getElementById('sDl').textContent = d.count;
+    if (v) document.getElementById('sVis').textContent = v.count;
+    document.getElementById('stats').hidden = false;
+  });
+})();
