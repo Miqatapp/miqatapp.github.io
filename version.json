@@ -1,8 +1,8 @@
 {
- "versionCode": 9,
- "versionName": "1.8",
+ "versionCode": 10,
+ "versionName": "1.9",
  "url": "https://miqatapp.github.io/Miqat.apk",
  "notes": [
-  "رابط جديد أقصر للموقع"
+  "إصلاح صوت الأذان: كان يبدأ بمقطع زايد ويعيد التكبير"
  ]
 }

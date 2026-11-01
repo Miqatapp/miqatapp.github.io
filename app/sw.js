@@ -1,5 +1,5 @@
 // الشبكة أولاً (عشان التحديثات توصل على طول)، والكاش احتياط بدون إنترنت
-const C = 'miqat-v3';
+const C = 'miqat-v4';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(
   caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== C).map((k) => caches.delete(k)))).then(() => self.clients.claim())
