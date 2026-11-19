@@ -14,8 +14,11 @@ tap() { # tap <regex>
 adb install -r QuestAI.apk 2>&1 | tail -1 | tee shots/install.txt
 adb logcat -c
 adb shell am start -W -n $PKG/.MainActivity | tee shots/launch.txt
-sleep 12
+sleep 3
+shot 0-after-3s
+sleep 9
 shot 1-first-launch
+adb shell pidof $PKG > shots/pid.txt || echo 'not running' > shots/pid.txt
 for i in 1 2 3; do
   tap 'While using the app|Allow|ALLOW|Only this time' || break
   sleep 2
@@ -34,5 +37,6 @@ tap '^مباشر$|^Live$' ; sleep 3
 shot 5-live
 
 adb shell dumpsys package $PKG | grep -E 'permission|granted=' > shots/permissions.txt
-adb logcat -d -s QuestAI:V chromium:E > shots/console.log
+adb logcat -d -s QuestAI:V chromium:E AndroidRuntime:E ActivityManager:W ActivityTaskManager:W > shots/console.log
+adb logcat -d *:E > shots/errors.log
 echo done
