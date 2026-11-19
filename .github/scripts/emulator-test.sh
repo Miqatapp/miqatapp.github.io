@@ -34,14 +34,13 @@ sleep 4
 shot 2-main
 dump 2-main
 
-tap '^settings$' && sleep 2 && shot 3-settings
-tap '^تم$|^Done$' ; sleep 1
-
-tap '^كاميرا$|^Camera$' ; sleep 6
-shot 4-camera
-
-tap '^مباشر$|^Live$' ; sleep 3
-shot 5-live
+# WebView content is not in the accessibility dump, so tap by position (pixel_tablet, 2560x1600, RTL layout)
+adb shell input tap 72 108; sleep 2; shot 3-settings
+adb shell input tap 2100 900; sleep 2            # tap the dimmed area to close settings
+adb shell input tap 1704 1380; sleep 8; shot 4-camera
+adb shell input tap 1516 1380; sleep 6; shot 4b-whats-this
+adb shell input tap 1042 1380; sleep 3; shot 5-live
+adb shell input tap 160 54; sleep 2; shot 6-english
 
 adb shell dumpsys package $PKG | grep -E 'permission|granted=' > shots/permissions.txt
 adb logcat -d -s QuestAI:V chromium:E AndroidRuntime:E ActivityManager:W ActivityTaskManager:W > shots/console.log
