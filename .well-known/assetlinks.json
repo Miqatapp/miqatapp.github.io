@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.miqatapp.questai",
+      "sha256_cert_fingerprints": [
+        "EB:BC:93:F3:58:8E:66:08:4E:7C:96:86:E3:8D:13:3A:3A:BD:BD:99:C3:A8:28:95:E6:38:63:8B:38:43:35:C6"
+      ]
+    }
+  }
+]
