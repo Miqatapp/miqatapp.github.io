@@ -177,3 +177,30 @@ export async function openaiSpeech(text, key, voice, signal) {
   if (!r.ok) throw await failure(r);
   return r.blob();
 }
+
+/** Gemini text-to-speech (works with a free key, low daily limits). Returns a WAV Blob. */
+export async function geminiSpeech(text, key, signal) {
+  const r = await fetch(`${GEMINI}/models/gemini-2.5-flash-preview-tts:generateContent`, {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: text.slice(0, 3000) }] }],
+      generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } },
+    }),
+  });
+  if (!r.ok) throw await failure(r);
+  const j = await r.json();
+  const part = (j.candidates?.[0]?.content?.parts || []).find(p => p.inlineData || p.inline_data);
+  const d = part?.inlineData || part?.inline_data;
+  if (!d?.data) throw new Error('no audio');
+  const rate = +(/rate=(\d+)/.exec(d.mimeType || d.mime_type || '')?.[1] || 24000);
+  const bin = atob(d.data), pcm = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) pcm[i] = bin.charCodeAt(i);
+  const h = new DataView(new ArrayBuffer(44));
+  const w = (p, s) => { for (let i = 0; i < s.length; i++) h.setUint8(p + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); h.setUint32(4, 36 + pcm.length, true); w(8, 'WAVE'); w(12, 'fmt ');
+  h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true);
+  h.setUint32(24, rate, true); h.setUint32(28, rate * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true);
+  w(36, 'data'); h.setUint32(40, pcm.length, true);
+  return new Blob([h.buffer, pcm], { type: 'audio/wav' });
+}

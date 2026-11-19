@@ -2,162 +2,153 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#070a12">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0a0b0d">
 <title>Quest AI</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="bg-glow"></div>
-<header>
-  <div class="brand"><img src="icon-192.png" alt=""><div><b data-i="title"></b><small data-i="subtitle"></small></div></div>
-  <div class="hdr-actions">
-    <button id="install" class="chip" hidden data-i="install"></button>
-    <button id="lang" class="chip"></button>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.7l1.3-2h7l1.3 2h1.7A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.6"/></symbol>
+  <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+  <symbol id="i-live" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <span class="mark"><i></i></span>
+      <b>Quest AI</b>
+      <span id="model-chip" class="chip mono"></span>
+    </div>
+    <div class="bar-actions">
+      <button id="enter-ar" class="pill mono" hidden data-i="enterAR"></button>
+      <button id="enter-vr" class="pill mono" hidden data-i="enterVR"></button>
+      <button id="lang" class="icon-btn mono" aria-label="language"></button>
+      <button id="open-settings" class="icon-btn" aria-label="settings"><svg><use href="#i-gear"/></svg></button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <span id="banner-text"></span>
+    <div class="banner-actions"><button id="banner-btn" class="pill solid"></button><button id="banner-btn2" class="pill" hidden></button></div>
   </div>
-</header>
 
-<nav class="tabs">
-  <button class="tab active" data-tab="chat" data-i="tabChat"></button>
-  <button class="tab" data-tab="settings" data-i="tabSettings"></button>
-  <span class="tab-ink"></span>
-</nav>
+  <main class="stage">
+    <section class="viewport" id="viewport">
+      <video id="cam-video" playsinline muted></video>
+      <canvas id="hud"></canvas>
+      <div class="vp-frame"><i></i><i></i><i></i><i></i></div>
+      <div class="vp-top mono">
+        <span class="vp-src"><i id="rec-dot"></i><span id="vp-source"></span></span>
+        <span id="vp-res"></span>
+      </div>
+      <div class="vp-empty" id="vp-empty">
+        <div class="meter" id="meter"></div>
+        <b data-i="camOff"></b>
+        <span data-i="camOffSub"></span>
+        <button id="cam-enable" class="pill" data-i="camEnable"></button>
+      </div>
+      <div class="vp-bottom">
+        <div id="caption" class="caption"></div>
+        <div class="state mono"><i id="state-dot"></i><span id="state-text"></span></div>
+      </div>
+    </section>
 
-<main>
-  <!-- ASSISTANT -->
-  <section id="tab-chat" class="pane active">
-    <div id="welcome" class="welcome" hidden>
-      <span data-i="welcome"></span>
-      <button id="go-settings" class="chip" data-i="goSettings"></button>
-    </div>
+    <aside class="side">
+      <div class="side-head">
+        <span class="mono" data-i="conversation"></span>
+        <button id="clear" class="icon-btn sm" aria-label="clear"><svg><use href="#i-trash"/></svg></button>
+      </div>
+      <div id="log" class="log"></div>
+      <div id="status" class="status"></div>
+      <form id="composer" class="composer">
+        <input id="text" autocomplete="off" enterkeyhint="send">
+        <button id="send" type="submit" class="send" aria-label="send"><svg><use href="#i-send"/></svg></button>
+      </form>
+    </aside>
+  </main>
 
-    <div class="hero">
-      <div class="stage">
-        <div class="cam-box" id="cam-box" hidden>
-          <video id="cam-video" playsinline muted></video>
-          <span class="cam-badge"><i></i><span id="cam-label"></span></span>
+  <nav class="dock">
+    <button id="cam" class="dock-btn"><svg><use href="#i-cam"/></svg><span data-i="cam"></span></button>
+    <button id="screen" class="dock-btn" hidden><svg><use href="#i-screen"/></svg><span data-i="screen"></span></button>
+    <button id="look" class="dock-btn"><svg><use href="#i-scan"/></svg><span data-i="look"></span></button>
+    <button id="mic" class="talk"><span class="talk-ring"></span><svg><use href="#i-mic"/></svg><span class="talk-label" data-i="talk"></span></button>
+    <button id="live" class="dock-btn"><svg><use href="#i-live"/></svg><span data-i="live"></span></button>
+    <button id="stop" class="dock-btn"><svg><use href="#i-stop"/></svg><span data-i="stop"></span></button>
+  </nav>
+</div>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-scrim" id="sheet-scrim"></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true">
+    <header class="sheet-head">
+      <b data-i="settings"></b>
+      <button id="close-settings" class="pill solid" data-i="done"></button>
+    </header>
+    <div class="sheet-body">
+      <h4 class="mono" data-i="provider"></h4>
+      <div class="group">
+        <div class="row"><label for="provider" data-i="provider"></label><select id="provider"></select></div>
+        <div class="row"><label for="model" data-i="model"></label><input id="model" class="ltr" list="models" autocomplete="off"><datalist id="models"></datalist></div>
+        <div class="row col"><button id="fetch-models" class="pill wide" data-i="fetchModels"></button><div id="models-status" class="note"></div></div>
+      </div>
+
+      <h4 class="mono" data-i="keys"></h4>
+      <div class="group">
+        <div class="row"><label for="key-openai">OpenAI</label><div class="secret"><input id="key-openai" type="password" class="ltr" autocomplete="off" placeholder="sk-…"><button class="eye" data-for="key-openai" type="button">◉</button></div></div>
+        <div class="row"><label for="key-anthropic">Anthropic</label><div class="secret"><input id="key-anthropic" type="password" class="ltr" autocomplete="off" placeholder="sk-ant-…"><button class="eye" data-for="key-anthropic" type="button">◉</button></div></div>
+        <div class="row"><label for="key-gemini">Gemini</label><div class="secret"><input id="key-gemini" type="password" class="ltr" autocomplete="off" placeholder="AIza…"><button class="eye" data-for="key-gemini" type="button">◉</button></div></div>
+        <div id="custom-fields">
+          <div class="row"><label for="custom-preset" data-i="customPreset"></label>
+            <select id="custom-preset" class="ltr">
+              <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+              <option value="https://api.deepseek.com/v1">DeepSeek</option>
+              <option value="https://api.x.ai/v1">xAI Grok</option>
+              <option value="https://api.mistral.ai/v1">Mistral</option>
+              <option value="https://api.groq.com/openai/v1">Groq</option>
+              <option value="">Other</option>
+            </select></div>
+          <div class="row"><label for="custom-base" data-i="customBase"></label><input id="custom-base" class="ltr" placeholder="https://…/v1"></div>
+          <div class="row"><label for="key-custom" data-i="customKey"></label><div class="secret"><input id="key-custom" type="password" class="ltr" autocomplete="off"><button class="eye" data-for="key-custom" type="button">◉</button></div></div>
         </div>
-        <div id="orb" class="orb idle"><div class="orb-core"></div><div class="orb-ring"></div><div class="orb-ring r2"></div></div>
       </div>
-      <div id="orb-state" class="orb-state"></div>
-      <button id="live" class="live-btn"><span class="dot"></span><span id="live-label"></span></button>
-      <p class="hint" data-i="liveHint"></p>
-    </div>
-
-    <div class="xr-row">
-      <button id="enter-ar" class="xr-btn" disabled><span>◎</span><b data-i="enterAR"></b></button>
-      <button id="enter-vr" class="xr-btn alt" disabled><span>◉</span><b data-i="enterVR"></b></button>
-    </div>
-    <p id="xr-note" class="note"></p>
-
-    <div class="tools">
-      <button id="mic" class="tool" data-i="holdTalk"></button>
-      <button id="cam" class="tool"></button>
-      <button id="screen" class="tool" data-i="screenShare" hidden></button>
-      <button id="snap" class="tool" data-i="whatsThis"></button>
-      <button id="stop" class="tool" data-i="stop"></button>
-      <button id="clear" class="tool" data-i="clear"></button>
-    </div>
-
-    <div id="log" class="log"></div>
-    <div id="status" class="status"></div>
-
-    <div class="composer">
-      <input id="text" autocomplete="off">
-      <button id="send" class="send" aria-label="send">➤</button>
-    </div>
-  </section>
-
-  <!-- SETTINGS -->
-  <section id="tab-settings" class="pane">
-    <div class="card">
-      <label for="provider" data-i="provider"></label>
-      <select id="provider"></select>
-      <label for="model" data-i="model"></label>
-      <input id="model" class="ltr" list="models" autocomplete="off">
-      <datalist id="models"></datalist>
-      <button id="fetch-models" class="ghost wide" data-i="fetchModels"></button>
-      <div id="models-status" class="note"></div>
-    </div>
-
-    <div class="card">
-      <h3 data-i="keys"></h3>
       <p class="note" data-i="keyHint"></p>
-      <label for="key-openai">OpenAI (ChatGPT)</label>
-      <div class="secret"><input id="key-openai" type="password" class="ltr" autocomplete="off" placeholder="sk-..."><button class="eye" data-for="key-openai">👁</button></div>
-      <label for="key-anthropic">Anthropic (Claude)</label>
-      <div class="secret"><input id="key-anthropic" type="password" class="ltr" autocomplete="off" placeholder="sk-ant-..."><button class="eye" data-for="key-anthropic">👁</button></div>
-      <label for="key-gemini">Google Gemini</label>
-      <div class="secret"><input id="key-gemini" type="password" class="ltr" autocomplete="off" placeholder="AIza..."><button class="eye" data-for="key-gemini">👁</button></div>
-      <div id="custom-fields">
-        <label for="custom-preset" data-i="customPreset"></label>
-        <select id="custom-preset" class="ltr">
-          <option value="https://openrouter.ai/api/v1">OpenRouter</option>
-          <option value="https://api.deepseek.com/v1">DeepSeek</option>
-          <option value="https://api.x.ai/v1">xAI Grok</option>
-          <option value="https://api.mistral.ai/v1">Mistral</option>
-          <option value="https://api.groq.com/openai/v1">Groq</option>
-          <option value="">Other / أخرى</option>
-        </select>
-        <label for="custom-base" data-i="customBase"></label>
-        <input id="custom-base" class="ltr" placeholder="https://openrouter.ai/api/v1">
-        <label for="key-custom" data-i="customKey"></label>
-        <div class="secret"><input id="key-custom" type="password" class="ltr" autocomplete="off"><button class="eye" data-for="key-custom">👁</button></div>
+
+      <h4 class="mono" data-i="camera"></h4>
+      <div class="group">
+        <div class="row"><label for="cam-device" data-i="camDevice"></label><select id="cam-device"></select></div>
+        <label class="row switch"><span data-i="camAttach"></span><input id="cam-attach" type="checkbox"><i></i></label>
       </div>
-    </div>
 
-    <div class="card">
-      <h3 data-i="camera"></h3>
-      <label for="cam-device" data-i="camDevice"></label>
-      <select id="cam-device"></select>
-      <label class="check"><input id="cam-attach" type="checkbox"><span data-i="camAttach"></span></label>
-    </div>
+      <h4 class="mono" data-i="voice"></h4>
+      <div class="group">
+        <label class="row switch"><span data-i="ttsOn"></span><input id="tts-on" type="checkbox"><i></i></label>
+        <div class="row"><label for="tts-engine" data-i="ttsEngine"></label>
+          <select id="tts-engine"><option value="auto" data-i="auto"></option><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="browser" data-i="browser"></option></select></div>
+        <div class="row"><label for="tts-voice" data-i="ttsVoice"></label>
+          <select id="tts-voice" class="ltr"><option>nova</option><option>alloy</option><option>echo</option><option>fable</option><option>onyx</option><option>shimmer</option></select></div>
+        <div class="row"><label for="stt-engine" data-i="sttEngine"></label>
+          <select id="stt-engine"><option value="auto" data-i="auto"></option><option value="openai">OpenAI Whisper</option><option value="gemini">Gemini</option></select></div>
+        <div class="row"><label for="vad" data-i="vadSens"></label>
+          <select id="vad"><option value="low" data-i="low"></option><option value="medium" data-i="medium"></option><option value="high" data-i="high"></option></select></div>
+      </div>
 
-    <div class="card">
-      <h3 data-i="voice"></h3>
-      <label class="check"><input id="tts-on" type="checkbox"><span data-i="ttsOn"></span></label>
-      <label for="tts-engine" data-i="ttsEngine"></label>
-      <select id="tts-engine">
-        <option value="auto" data-i="auto"></option>
-        <option value="openai">OpenAI TTS</option>
-        <option value="browser" data-i="browser"></option>
-      </select>
-      <label for="tts-voice" data-i="ttsVoice"></label>
-      <select id="tts-voice" class="ltr">
-        <option>alloy</option><option>echo</option><option>fable</option><option>nova</option><option>onyx</option><option>shimmer</option>
-      </select>
-      <label for="stt-engine" data-i="sttEngine"></label>
-      <select id="stt-engine">
-        <option value="auto" data-i="auto"></option>
-        <option value="openai">OpenAI Whisper</option>
-        <option value="gemini">Gemini</option>
-      </select>
-      <label for="vad" data-i="vadSens"></label>
-      <select id="vad">
-        <option value="low" data-i="low"></option>
-        <option value="medium" data-i="medium"></option>
-        <option value="high" data-i="high"></option>
-      </select>
+      <h4 class="mono" data-i="system"></h4>
+      <div class="group"><div class="row col"><textarea id="system" rows="5"></textarea></div></div>
+      <p class="note mono">Quest AI · <span id="version"></span></p>
     </div>
+  </div>
+</div>
 
-    <div class="card">
-      <label for="system" data-i="system"></label>
-      <textarea id="system" rows="5"></textarea>
-    </div>
-  </section>
-</main>
-
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-} }
-</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

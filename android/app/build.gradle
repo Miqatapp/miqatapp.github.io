@@ -1,6 +1,6 @@
 plugins { id 'com.android.application' }
 
-def appUrl = 'https://miqatapp.github.io/vr/'
+def wwwDir = "$buildDir/generated/www"
 
 android {
   namespace 'io.github.miqatapp.questai'
@@ -9,10 +9,10 @@ android {
     applicationId 'io.github.miqatapp.questai'
     minSdk 29
     targetSdk 32
-    versionCode 1
-    versionName '1.0'
-    manifestPlaceholders = [appUrl: appUrl, hostName: 'miqatapp.github.io']
+    versionCode 3
+    versionName '3.0'
   }
+  buildFeatures { buildConfig true }
   signingConfigs {
     release {
       storeFile rootProject.file('questai.keystore')
@@ -24,10 +24,18 @@ android {
   buildTypes {
     release { signingConfig signingConfigs.release; minifyEnabled false }
   }
+  sourceSets { main { assets.srcDirs += [wwwDir] } }
   lint { checkReleaseBuilds false; abortOnError false }
   compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
+// Bundle the web UI (../vr) into the APK so the app works without loading a website.
+tasks.register('copyWebApp', Copy) {
+  from(rootProject.file('../vr')) { exclude 'sw.js', 'manifest.webmanifest', 'xr.js' }
+  into("$wwwDir/www")
+}
+tasks.named('preBuild') { dependsOn 'copyWebApp' }
+
 dependencies {
-  implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+  implementation 'androidx.webkit:webkit:1.11.0'
 }
