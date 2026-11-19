@@ -34,7 +34,8 @@ adb shell input tap 72 108; sleep 2
 adb shell input tap 352 1120; sleep 1
 adb shell input text AIzaFAKEKEYFORTEST; sleep 1
 shot 3-settings
-adb shell input tap 2100 900; sleep 2            # close settings -> mic + camera start automatically
+adb shell input keyevent 4; sleep 1              # hide keyboard
+adb shell input tap 80 110; sleep 2               # "Done" -> mic + camera start automatically
 shot 3b-first-dialog
 allow_all
 sleep 6
