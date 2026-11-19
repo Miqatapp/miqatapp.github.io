@@ -81,8 +81,7 @@
     <button id="cam" class="dock-btn"><svg><use href="#i-cam"/></svg><span data-i="cam"></span></button>
     <button id="screen" class="dock-btn" hidden><svg><use href="#i-screen"/></svg><span data-i="screen"></span></button>
     <button id="look" class="dock-btn"><svg><use href="#i-scan"/></svg><span data-i="look"></span></button>
-    <button id="mic" class="talk"><span class="talk-ring"></span><svg><use href="#i-mic"/></svg><span class="talk-label" data-i="talk"></span></button>
-    <button id="live" class="dock-btn"><svg><use href="#i-live"/></svg><span data-i="live"></span></button>
+    <button id="mic" class="talk"><span class="talk-ring"></span><svg><use href="#i-mic"/></svg><span class="talk-label" id="mic-label"></span></button>
     <button id="stop" class="dock-btn"><svg><use href="#i-stop"/></svg><span data-i="stop"></span></button>
   </nav>
 </div>
@@ -126,11 +125,13 @@
       <h4 class="mono" data-i="camera"></h4>
       <div class="group">
         <div class="row"><label for="cam-device" data-i="camDevice"></label><select id="cam-device"></select></div>
+        <label class="row switch"><span data-i="autoCam"></span><input id="auto-cam" type="checkbox"><i></i></label>
         <label class="row switch"><span data-i="camAttach"></span><input id="cam-attach" type="checkbox"><i></i></label>
       </div>
 
       <h4 class="mono" data-i="voice"></h4>
       <div class="group">
+        <label class="row switch"><span data-i="alwaysListen"></span><input id="always-listen" type="checkbox"><i></i></label>
         <label class="row switch"><span data-i="ttsOn"></span><input id="tts-on" type="checkbox"><i></i></label>
         <div class="row"><label for="tts-engine" data-i="ttsEngine"></label>
           <select id="tts-engine"><option value="auto" data-i="auto"></option><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="browser" data-i="browser"></option></select></div>

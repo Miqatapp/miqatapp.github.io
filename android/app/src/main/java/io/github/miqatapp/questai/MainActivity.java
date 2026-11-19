@@ -36,10 +36,9 @@ public class MainActivity extends Activity {
   private static final String HOST = "appassets.androidplatform.net";
   private static final String START = "https://" + HOST + "/assets/www/index.html";
   private static final String HEADSET_CAMERA = "horizonos.permission.HEADSET_CAMERA";
-  private static final int REQ_STARTUP = 1, REQ_WEB = 2;
+  private static final int REQ_WEB = 2;
 
   private WebView web;
-  private PermissionRequest pending;
   private TextToSpeech tts;
   private boolean ttsReady = false;
 
@@ -105,9 +104,7 @@ public class MainActivity extends Activity {
       tts = null;
     }
 
-    // Ask right away so the system dialogs appear on first launch.
-    List<String> missing = missing(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, HEADSET_CAMERA});
-    if (!missing.isEmpty()) requestPermissions(missing.toArray(new String[0]), REQ_STARTUP);
+    // Permissions are requested when the page asks for the mic/camera (one dialog at a time).
   }
 
   private boolean has(String p) { return checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED; }
@@ -118,23 +115,43 @@ public class MainActivity extends Activity {
     return out;
   }
 
-  private void handleWebPermission(PermissionRequest req) {
+  // WebView may ask for the mic and the camera at the same time. Android only shows one
+  // dialog at a time, so queue page requests and answer them all once the user decides.
+  private final List<PermissionRequest> queue = new ArrayList<>();
+  private boolean asking = false;
+
+  private static List<String> androidPerms(PermissionRequest req) {
     List<String> need = new ArrayList<>();
     for (String r : req.getResources()) {
       if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) need.add(Manifest.permission.RECORD_AUDIO);
       if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) { need.add(Manifest.permission.CAMERA); need.add(HEADSET_CAMERA); }
     }
-    List<String> miss = missing(need.toArray(new String[0]));
-    miss.remove(HEADSET_CAMERA); // optional: only exists on Quest
-    if (miss.isEmpty()) {
-      if (!has(HEADSET_CAMERA) && need.contains(HEADSET_CAMERA)) requestPermissions(new String[]{HEADSET_CAMERA}, REQ_STARTUP);
-      grantAllowed(req);
-      return;
-    }
-    if (pending != null) pending.deny();
-    pending = req;
-    if (need.contains(HEADSET_CAMERA) && !has(HEADSET_CAMERA)) miss.add(HEADSET_CAMERA);
+    return need;
+  }
+
+  private void handleWebPermission(PermissionRequest req) {
+    queue.add(req);
+    if (!asking) askNext();
+  }
+
+  private void askNext() {
+    List<String> miss = new ArrayList<>();
+    for (PermissionRequest r : queue)
+      for (String p : androidPerms(r))
+        if (!has(p) && !miss.contains(p) && !askedOnce.contains(p)) miss.add(p);
+    if (miss.isEmpty()) { answerQueue(); return; }
+    asking = true;
+    askedOnce.addAll(miss);
     requestPermissions(miss.toArray(new String[0]), REQ_WEB);
+  }
+
+  // Guards against re-asking inside one round when the user taps "Don't allow".
+  private final List<String> askedOnce = new ArrayList<>();
+
+  private void answerQueue() {
+    for (PermissionRequest r : queue) grantAllowed(r);
+    queue.clear();
+    askedOnce.clear(); // a later retry from the page may ask again
   }
 
   private void grantAllowed(PermissionRequest req) {
@@ -149,7 +166,9 @@ public class MainActivity extends Activity {
   @Override
   public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
     super.onRequestPermissionsResult(code, perms, results);
-    if (code == REQ_WEB && pending != null) { grantAllowed(pending); pending = null; }
+    if (code != REQ_WEB) return;
+    asking = false;
+    askNext();
   }
 
   private void notifySpoken(String id) {
@@ -174,8 +193,12 @@ public class MainActivity extends Activity {
     web.saveState(out);
   }
 
+  // The WebView is deliberately not paused in onPause/onStop so listening and speaking continue
+  // while another app is in front.
+
   @Override
   protected void onDestroy() {
+    stopService(new Intent(this, ListenService.class));
     if (tts != null) tts.shutdown();
     web.destroy();
     super.onDestroy();
@@ -203,5 +226,15 @@ public class MainActivity extends Activity {
     }
 
     @JavascriptInterface public void stopSpeaking() { if (ttsReady) tts.stop(); }
+
+    /** Keep the microphone alive while other apps are in front (foreground service). */
+    @JavascriptInterface public void setBackgroundListening(boolean on) {
+      runOnUiThread(() -> {
+        Intent i = new Intent(MainActivity.this, ListenService.class);
+        try {
+          if (on) startForegroundService(i); else stopService(i);
+        } catch (Exception e) { Log.w(TAG, "listen service", e); }
+      });
+    }
   }
 }

@@ -186,4 +186,15 @@ canvas.xr { position: fixed; inset: 0; z-index: 20; }
   .talk { width: 96px; flex: none; }
   .chip { display: none; }
 }
+/* short windows (e.g. keyboard open): keep the essentials, drop decoration */
+@media (max-height: 560px) {
+  .vp-empty .meter, .vp-empty span { display: none; }
+  .vp-empty b { margin-top: 0; }
+  .vp-frame, .caption { display: none; }
+  .dock { padding-block: 6px; }
+  .dock-btn { height: 46px; }
+  .dock-btn span { display: none; }
+  .talk { height: 52px; }
+  .talk-label { display: none; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
