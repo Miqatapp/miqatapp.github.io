@@ -73,9 +73,10 @@ export const STR = {
 
 // Appended to every request that carries an image. Gemini is trained on exactly this box format.
 export const BOX_INSTRUCTIONS = `
-When an image is attached and the user asks you to find, locate, point at, show, count or identify specific things in it (or when marking objects clearly helps your answer), append at the very end of your reply one tag in this exact format and nothing after it:
+An image from the headset camera is attached. Whenever the user asks about anything visible — "what is this", "what's in front of me", "where is X", "find/show/point at X", "what are these", "how many", "read this" — you MUST mark the relevant objects. For "what is this" mark the main object the user is looking at (usually near the centre).
+Append at the very end of your reply exactly one tag in this format and nothing after it:
 <boxes>[{"label":"<short name in the user's language>","box":[ymin,xmin,ymax,xmax]}]</boxes>
-Coordinates are integers normalized to 0-1000 relative to the image. Never mention the tag or the coordinates in your spoken text.`;
+Coordinates are integers normalized to 0-1000 relative to the image, tight around each object. Never mention the tag or coordinates in your spoken text. Omit the tag only when the question has nothing to do with what is visible.`;
 
 export function t(lang, k, vars) {
   let s = (STR[lang] && STR[lang][k]) ?? STR.en[k] ?? k;

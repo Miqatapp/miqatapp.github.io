@@ -1,5 +1,6 @@
 import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pickModel, isModelGone } from './ai.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
+import { Tracker } from './tracker.js';
 
 const VERSION = '3.0';
 const $ = id => document.getElementById(id);
@@ -128,7 +129,7 @@ function updateMsg(m) {
   bump();
 }
 function removeMsg(m) { const i = msgs.indexOf(m); if (i >= 0) msgs.splice(i, 1); m.el?.remove(); renderEmpty(); bump(); }
-function clearChat() { stopAll(); msgs.length = 0; $('log').innerHTML = ''; renderEmpty(); setStatus(''); hud.boxes = null; setCaption(''); }
+function clearChat() { stopAll(); msgs.length = 0; $('log').innerHTML = ''; renderEmpty(); setStatus(''); tracker.clear(); setCaption(''); }
 
 function drawThumbBoxes(m) {
   if (!m.thumb || !m.boxes?.length) return;
@@ -549,7 +550,7 @@ function attachStream(s, kind) {
 }
 function camStop() {
   camStream?.getTracks().forEach(tk => tk.stop());
-  camStream = null; camVideo.srcObject = null; hud.boxes = null;
+  camStream = null; camVideo.srcObject = null; tracker.clear();
   updateCamUI();
 }
 const camToggle = () => (camStream && camKind === 'camera') ? camStop() : camStart();
@@ -585,11 +586,13 @@ function updateCamUI() {
 camVideo.addEventListener('loadedmetadata', () => { $('vp-res').textContent = `${camVideo.videoWidth}×${camVideo.videoHeight}`; });
 
 /* ================= HUD: detection boxes + scan ================= */
-const hud = { boxes: null, src: null, t0: 0, scanUntil: 0 };
+const hud = { scanUntil: 0, lastT: 0 };
 const hudCanvas = $('hud'), hg = hudCanvas.getContext('2d');
+const tracker = new Tracker();
+// The model boxes objects on the frame it saw; the tracker then follows them live.
 function showBoxes(boxes, img) {
-  hud.boxes = boxes; hud.t0 = performance.now();
-  hud.src = { w: img?.naturalWidth || camVideo.videoWidth, h: img?.naturalHeight || camVideo.videoHeight };
+  const go = () => tracker.start(boxes, img);
+  img.complete ? go() : img.addEventListener('load', go, { once: true });
 }
 function boxRect([y0, x0, y1, x1], w, h) {
   const c = v => Math.max(0, Math.min(1000, v)) / 1000;
@@ -658,26 +661,23 @@ function drawHUD(now) {
     for (let gx = 24; gx < W; gx += 48) for (let gy = 24; gy < H; gy += 48) hg.fillRect(gx, gy, 1.5, 1.5);
   }
 
-  // detections (stay 14s, fade out over the last 1.5s)
-  if (hud.boxes) {
-    const age = now - hud.t0, life = 14000;
-    if (age > life) { hud.boxes = null; return; }
-    const fade = Math.min(1, (life - age) / 1500);
-    hg.globalAlpha = fade;
-    const fw = hud.src.w || vw, fh = hud.src.h || vh;
-    hud.boxes.forEach((b, i) => {
-      const p = Math.min(1, Math.max(0, (age - i * 120) / 450));
+  // tracked detections: follow the objects as the camera / head moves
+  if (tracker.items.length) {
+    tracker.update(camVideo, now);
+    const dt = Math.min(0.1, (now - (hud.lastT || now)) / 1000) || 1 / 30;
+    for (const b of tracker.view(dt)) {
+      const age = now - b.born;
+      const p = Math.min(1, Math.max(0, (age - b.i * 120) / 450));
       const ease = 1 - Math.pow(1 - p, 3);
-      const r = boxRect(b.box, fw, fh);
-      // frame → video → screen (the snapshot is the full video frame scaled)
-      const k = vw / fw;
-      const sr = { x: ox + r.x * k * sc, y: oy + r.y * k * sc, w: r.w * k * sc, h: r.h * k * sc };
+      const sr = { x: ox + b.x * vw * sc, y: oy + b.y * vh * sc, w: b.w * vw * sc, h: b.h * vh * sc };
       const grow = (1 - ease) * 0.12;
       sr.x -= sr.w * grow / 2; sr.y -= sr.h * grow / 2; sr.w *= 1 + grow; sr.h *= 1 + grow;
-      drawBox(hg, sr, b.label, i, ease);
-    });
+      hg.globalAlpha = b.lost ? 0.3 : 1;   // lost: dim until re-acquired
+      drawBox(hg, sr, b.label, b.i, ease);
+    }
     hg.globalAlpha = 1;
   }
+  hud.lastT = now;
 }
 
 /* ================= UI wiring ================= */
@@ -860,4 +860,4 @@ async function autoStart() {
 autoStart();
 
 // test hooks
-window.__questai = { S, msgs, ask, setLive, orbState, showBoxes, get live() { return live; }, core };
+window.__questai = { S, msgs, ask, setLive, orbState, showBoxes, tracker, get live() { return live; }, core };
