@@ -46,7 +46,6 @@ public class MainActivity extends Activity {
   @Override
   protected void onCreate(Bundle state) {
     super.onCreate(state);
-    WebView.setWebContentsDebuggingEnabled(true);
     web = new WebView(this);
     web.setBackgroundColor(0xFF0A0B0D);
     setContentView(web);
