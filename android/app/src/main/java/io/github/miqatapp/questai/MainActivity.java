@@ -92,16 +92,19 @@ public class MainActivity extends Activity {
     if (state != null) web.restoreState(state);
     else web.loadUrl(START);
 
-    tts = new TextToSpeech(this, status -> {
-      ttsReady = status == TextToSpeech.SUCCESS;
-      if (!ttsReady) return;
+    // onInit can fire before the constructor returns, so the listener is attached afterwards.
+    try {
+      tts = new TextToSpeech(this, status -> ttsReady = status == TextToSpeech.SUCCESS);
       tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
         @Override public void onStart(String id) {}
         @Override public void onDone(String id) { notifySpoken(id); }
         @Override public void onError(String id) { notifySpoken(id); }
         @Override public void onStop(String id, boolean interrupted) { notifySpoken(id); }
       });
-    });
+    } catch (Exception e) {
+      Log.w(TAG, "TTS unavailable", e);
+      tts = null;
+    }
 
     // Ask right away so the system dialogs appear on first launch.
     List<String> missing = missing(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, HEADSET_CAMERA});
