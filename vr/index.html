@@ -3,41 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b0f17">
+<meta name="theme-color" content="#070a12">
 <title>Quest AI</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="bg-glow"></div>
 <header>
-  <div class="brand"><img src="icon-192.png" alt=""><span data-i="title"></span></div>
+  <div class="brand"><img src="icon-192.png" alt=""><div><b data-i="title"></b><small data-i="subtitle"></small></div></div>
   <div class="hdr-actions">
-    <button id="install" class="ghost" hidden data-i="install"></button>
-    <button id="lang" class="ghost"></button>
+    <button id="install" class="chip" hidden data-i="install"></button>
+    <button id="lang" class="chip"></button>
   </div>
 </header>
 
 <nav class="tabs">
   <button class="tab active" data-tab="chat" data-i="tabChat"></button>
   <button class="tab" data-tab="settings" data-i="tabSettings"></button>
+  <span class="tab-ink"></span>
 </nav>
 
 <main>
-  <!-- CHAT -->
+  <!-- ASSISTANT -->
   <section id="tab-chat" class="pane active">
+    <div id="welcome" class="welcome" hidden>
+      <span data-i="welcome"></span>
+      <button id="go-settings" class="chip" data-i="goSettings"></button>
+    </div>
+
+    <div class="hero">
+      <div class="stage">
+        <div class="cam-box" id="cam-box" hidden>
+          <video id="cam-video" playsinline muted></video>
+          <span class="cam-badge"><i></i><span id="cam-label"></span></span>
+        </div>
+        <div id="orb" class="orb idle"><div class="orb-core"></div><div class="orb-ring"></div><div class="orb-ring r2"></div></div>
+      </div>
+      <div id="orb-state" class="orb-state"></div>
+      <button id="live" class="live-btn"><span class="dot"></span><span id="live-label"></span></button>
+      <p class="hint" data-i="liveHint"></p>
+    </div>
+
     <div class="xr-row">
-      <button id="enter-ar" class="primary" disabled data-i="enterAR"></button>
-      <button id="enter-vr" class="primary alt" disabled data-i="enterVR"></button>
+      <button id="enter-ar" class="xr-btn" disabled><span>◎</span><b data-i="enterAR"></b></button>
+      <button id="enter-vr" class="xr-btn alt" disabled><span>◉</span><b data-i="enterVR"></b></button>
     </div>
     <p id="xr-note" class="note"></p>
 
-    <div class="cam-box" id="cam-box" hidden>
-      <video id="cam-video" playsinline muted></video>
-      <span class="cam-badge" data-i="camWillAttach"></span>
+    <div class="tools">
+      <button id="mic" class="tool" data-i="holdTalk"></button>
+      <button id="cam" class="tool"></button>
+      <button id="screen" class="tool" data-i="screenShare" hidden></button>
+      <button id="snap" class="tool" data-i="whatsThis"></button>
+      <button id="stop" class="tool" data-i="stop"></button>
+      <button id="clear" class="tool" data-i="clear"></button>
     </div>
 
     <div id="log" class="log"></div>
@@ -45,14 +69,7 @@
 
     <div class="composer">
       <input id="text" autocomplete="off">
-      <button id="send" class="primary" data-i="send"></button>
-    </div>
-    <div class="tools">
-      <button id="mic" class="tool big" data-i="holdTalk"></button>
-      <button id="cam" class="tool"></button>
-      <button id="snap" class="tool" data-i="whatsThis"></button>
-      <button id="stop" class="tool" data-i="stop"></button>
-      <button id="clear" class="tool" data-i="clear"></button>
+      <button id="send" class="send" aria-label="send">➤</button>
     </div>
   </section>
 
@@ -62,10 +79,8 @@
       <label for="provider" data-i="provider"></label>
       <select id="provider"></select>
       <label for="model" data-i="model"></label>
-      <div class="inline">
-        <input id="model" class="ltr" list="models" autocomplete="off">
-        <datalist id="models"></datalist>
-      </div>
+      <input id="model" class="ltr" list="models" autocomplete="off">
+      <datalist id="models"></datalist>
       <button id="fetch-models" class="ghost wide" data-i="fetchModels"></button>
       <div id="models-status" class="note"></div>
     </div>
@@ -73,7 +88,7 @@
     <div class="card">
       <h3 data-i="keys"></h3>
       <p class="note" data-i="keyHint"></p>
-      <label for="key-openai">OpenAI</label>
+      <label for="key-openai">OpenAI (ChatGPT)</label>
       <div class="secret"><input id="key-openai" type="password" class="ltr" autocomplete="off" placeholder="sk-..."><button class="eye" data-for="key-openai">👁</button></div>
       <label for="key-anthropic">Anthropic (Claude)</label>
       <div class="secret"><input id="key-anthropic" type="password" class="ltr" autocomplete="off" placeholder="sk-ant-..."><button class="eye" data-for="key-anthropic">👁</button></div>
@@ -122,11 +137,17 @@
         <option value="openai">OpenAI Whisper</option>
         <option value="gemini">Gemini</option>
       </select>
+      <label for="vad" data-i="vadSens"></label>
+      <select id="vad">
+        <option value="low" data-i="low"></option>
+        <option value="medium" data-i="medium"></option>
+        <option value="high" data-i="high"></option>
+      </select>
     </div>
 
     <div class="card">
       <label for="system" data-i="system"></label>
-      <textarea id="system" rows="4"></textarea>
+      <textarea id="system" rows="5"></textarea>
     </div>
   </section>
 </main>
