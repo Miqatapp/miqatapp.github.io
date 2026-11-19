@@ -2,7 +2,7 @@
 export const PROVIDERS = {
   openai:    { label: 'OpenAI (ChatGPT)',      model: 'gpt-4o-mini' },
   anthropic: { label: 'Anthropic (Claude)',    model: 'claude-sonnet-5-5' },
-  gemini:    { label: 'Google Gemini',         model: 'gemini-2.5-flash' },
+  gemini:    { label: 'Google Gemini',         model: 'gemini-flash-latest' },
   custom:    { label: 'DeepSeek / Grok / Mistral / Groq / OpenRouter / ...', model: '' },
 };
 
@@ -18,7 +18,9 @@ async function failure(r) {
   const txt = await r.text().catch(() => '');
   let msg = txt;
   try { const j = JSON.parse(txt); msg = j.error?.message || j.error?.type || (typeof j.error === 'string' ? j.error : '') || j.message || txt; } catch {}
-  return new Error(`${r.status}: ${(msg || r.statusText).toString().slice(0, 300)}`);
+  const err = new Error((msg || r.statusText || 'HTTP ' + r.status).toString().slice(0, 400));
+  err.status = r.status;
+  return err;
 }
 
 async function* sse(resp, signal) {
@@ -179,8 +181,8 @@ export async function openaiSpeech(text, key, voice, signal) {
 }
 
 /** Gemini text-to-speech (works with a free key, low daily limits). Returns a WAV Blob. */
-export async function geminiSpeech(text, key, signal) {
-  const r = await fetch(`${GEMINI}/models/gemini-2.5-flash-preview-tts:generateContent`, {
+export async function geminiSpeech(text, key, model = 'gemini-2.5-flash-preview-tts', signal) {
+  const r = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
@@ -203,4 +205,36 @@ export async function geminiSpeech(text, key, signal) {
   h.setUint32(24, rate, true); h.setUint32(28, rate * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true);
   w(36, 'data'); h.setUint32(40, pcm.length, true);
   return new Blob([h.buffer, pcm], { type: 'audio/wav' });
+}
+
+/** True when the error means "this model id is retired / unknown". */
+export function isModelGone(e) {
+  const m = String(e?.message || '');
+  return (e?.status === 404 || e?.status === 400) &&
+    /model|not (found|available|supported)|no longer|does not exist|deprecat|retired/i.test(m);
+}
+
+const ver = id => (id.match(/\d+(\.\d+)?/g) || ['0']).map(Number);
+const newestFirst = (a, b) => { const x = ver(a), y = ver(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (y[i] || 0) - (x[i] || 0); if (d) return d; } return 0; };
+
+/** Picks a sensible current model from a provider's model list. kind: 'chat' | 'tts'. */
+export function pickModel(provider, ids, kind = 'chat') {
+  if (!ids?.length) return null;
+  if (provider === 'gemini') {
+    if (kind === 'tts') return ids.filter(id => /tts/.test(id)).sort(newestFirst)[0] || null;
+    if (ids.includes('gemini-flash-latest')) return 'gemini-flash-latest';
+    const flash = ids.filter(id => /^gemini-[\d.]+-flash(-\d+)?$/.test(id)).sort(newestFirst);
+    if (flash.length) return flash[0];
+    return ids.filter(id => /flash/.test(id) && !/(lite|tts|image|live|audio|embed|thinking|exp)/.test(id)).sort(newestFirst)[0]
+      || ids.filter(id => /^gemini/.test(id) && !/(tts|image|live|audio|embed)/.test(id)).sort(newestFirst)[0] || null;
+  }
+  if (provider === 'openai') {
+    const minis = ids.filter(id => /^gpt-[\d.]+o?-mini$/.test(id)).sort(newestFirst);
+    return minis[0] || ids.filter(id => /^gpt-[\d.]+o?$/.test(id)).sort(newestFirst)[0] || null;
+  }
+  if (provider === 'anthropic') {
+    // the API lists newest models first
+    return ids.find(id => /sonnet/.test(id)) || ids[0];
+  }
+  return null;
 }

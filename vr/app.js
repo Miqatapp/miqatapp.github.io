@@ -1,4 +1,4 @@
-import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech } from './ai.js';
+import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pickModel, isModelGone } from './ai.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 
 const VERSION = '3.0';
@@ -12,7 +12,7 @@ const DEF = {
   keys: { openai: '', anthropic: '', gemini: '', custom: '' },
   customBase: 'https://openrouter.ai/api/v1',
   system: '', ttsOn: true, ttsEngine: 'auto', ttsVoice: 'nova', sttEngine: 'auto', vad: 'medium',
-  camAttach: true, camDevice: '',
+  camAttach: true, camDevice: '', alwaysListen: true, autoCam: true, ttsModel: '',
 };
 function load() {
   try {
@@ -142,6 +142,41 @@ function drawThumbBoxes(m) {
   m.imgEl.complete ? draw() : (m.imgEl.onload = draw);
 }
 
+/* ================= model auto-resolution ================= */
+// Providers retire model ids regularly. When a request fails because the model is gone,
+// fetch the provider's model list, switch to a current model and retry once.
+const resolving = {};
+async function resolveModel(p, kind = 'chat') {
+  const key = (S.keys[p] || '').trim();
+  const ids = await listModels({ provider: p, key, base: S.customBase });
+  const m = pickModel(p, ids, kind);
+  if (!m) return null;
+  if (kind === 'tts') S.ttsModel = m; else S.models[p] = m;
+  save(); syncProviderUI();
+  return m;
+}
+async function withModel(p, fn, kind = 'chat') {
+  const current = kind === 'tts' ? (S.ttsModel || undefined) : modelFor(p);
+  try { return await fn(current); }
+  catch (e) {
+    if (!isModelGone(e)) throw e;
+    resolving[p + kind] ??= resolveModel(p, kind).finally(() => { delete resolving[p + kind]; });
+    const m = await resolving[p + kind];
+    if (!m || m === current) throw e;
+    if (kind === 'chat') setStatus(t('modelSwitched', { m }));
+    return fn(m);
+  }
+}
+function friendlyError(e) {
+  const st = e?.status, m = String(e?.message || e || '');
+  if (st === 401 || st === 403 || /api key|unauthori|permission denied|invalid.*key/i.test(m)) return t('errKey');
+  if (st === 429 || /quota|rate limit|resource.?exhausted/i.test(m)) return t('errQuota');
+  if (isModelGone(e)) return t('errModel');
+  if (e instanceof TypeError || /failed to fetch|network/i.test(m)) return t('errNet');
+  const first = m.split(/(?<=[.!؟?])\s/)[0];
+  return first.length > 160 ? first.slice(0, 157) + '…' : first;
+}
+
 /* ================= ask ================= */
 async function ask(text, { forceImage = false } = {}) {
   text = (text || '').trim();
@@ -186,15 +221,15 @@ async function ask(text, { forceImage = false } = {}) {
   const system = (S.system.trim() || t('sysDefault')) + (hasImages ? '\n' + BOX_INSTRUCTIONS : '');
   try {
     const history = msgs.filter(m => m !== a && !m.skip && m.text).map(m => ({ role: m.role, text: m.raw || m.text, image: m.image }));
-    const full = await chat({
-      provider: p, key, model: modelFor(p), base: S.customBase, system,
+    const full = await withModel(p, model => chat({
+      provider: p, key, model, base: S.customBase, system,
       messages: history, signal: ctl.signal,
       onDelta: s => {
         if (ctl.signal.aborted) return;
         looking = false;
         a.text = clean(splitBoxes(s).text); updateMsg(a); setCaption(a.text); speakReady(false);
       },
-    });
+    }));
     if (ctl.signal.aborted) throw new DOMException('aborted', 'AbortError');
     const { text: body, boxes } = splitBoxes(full);
     a.raw = full;
@@ -210,7 +245,8 @@ async function ask(text, { forceImage = false } = {}) {
       if (!a.text) { removeMsg(a); u.skip = true; } else { a.text += ' …'; updateMsg(a); }
     } else {
       u.skip = true; a.skip = true; a.err = true;
-      a.text = t('error') + ': ' + (e.message || e); updateMsg(a);
+      a.text = friendlyError(e); updateMsg(a);
+      console.warn('chat error', e?.status, e?.message);
     }
   } finally {
     if (abortCtl === ctl) { busy = false; abortCtl = null; }
@@ -292,7 +328,8 @@ function onAudio(c) {
     return;
   }
   if (!live) return;
-  if (busy || transcribing || isSpeaking()) { vad.pre = []; vad.run = 0; return; }
+  // pause while we think/speak, and for a moment after speaking so the reply's tail isn't heard as speech
+  if (busy || transcribing || isSpeaking() || performance.now() - speakEndAt < 700) { vad.pre = []; vad.run = 0; return; }
   const thr = Math.max(VAD_THR[S.vad] || 0.02, vad.noise * 3.2);
   if (rms < thr) vad.noise = vad.noise * 0.97 + rms * 0.03;
   vad.pre.push(c); if (vad.pre.length > 8) vad.pre.shift();
@@ -325,10 +362,12 @@ async function finishRecording() {
   if (r.len < rate * (r.live ? 0.45 : 0.35)) { if (!r.live) setStatus(t('tooShort')); return; }
   transcribing = true; setStatus(t('transcribing'));
   try {
-    const text = await transcribe(encodeWav(r.chunks, r.len, rate, 16000), {
-      engine: S.sttEngine, openaiKey: S.keys.openai.trim(), geminiKey: S.keys.gemini.trim(),
-      geminiModel: S.provider === 'gemini' ? modelFor('gemini') : PROVIDERS.gemini.model,
+    const wav = encodeWav(r.chunks, r.len, rate, 16000);
+    const useGemini = S.sttEngine === 'gemini' || (S.sttEngine === 'auto' && !S.keys.openai);
+    const run = geminiModel => transcribe(wav, {
+      engine: S.sttEngine, openaiKey: S.keys.openai.trim(), geminiKey: S.keys.gemini.trim(), geminiModel,
     });
+    const text = useGemini ? await withModel('gemini', run) : await run();
     transcribing = false;
     const said = (text || '').trim();
     if (!said || /^(\.|…|you|thank you\.?|thanks for watching!?|شكرا\.?|اشتركوا في القناة)$/i.test(said)) {
@@ -338,7 +377,8 @@ async function finishRecording() {
     await ask(said);
   } catch (e) {
     transcribing = false;
-    setStatus(t('error') + ': ' + e.message, true);
+    setStatus(friendlyError(e), true);
+    console.warn('stt error', e?.status, e?.message);
     resumeListening();
   }
 }
@@ -366,9 +406,9 @@ function encodeWav(chunks, len, inRate, outRate) {
   }
   return new Blob([buf], { type: 'audio/wav' });
 }
-async function setLive(on) {
+async function setLive(on, { quiet = false } = {}) {
   if (on) {
-    if (!sttReady()) { setStatus(t('needSttKey'), true); return; }
+    if (!sttReady()) { if (!quiet) setStatus(t('needSttKey'), true); return; }
     if (!(await openPipeOrExplain(() => setLive(true)))) return;
     live = true; vad.pre = []; vad.run = 0;
     setStatus('');
@@ -382,7 +422,7 @@ async function setLive(on) {
 function resumeListening() { if (!live) closePipeIfIdle(); }
 
 /* ================= audio out ================= */
-let ttsQueue = [], ttsPlaying = false, ttsGen = 0, audioEl = null, outAnalyser = null;
+let ttsQueue = [], ttsPlaying = false, ttsGen = 0, audioEl = null, outAnalyser = null, speakEndAt = 0;
 function ttsEngine() {
   const e = S.ttsEngine;
   if (e === 'openai' && S.keys.openai) return 'openai';
@@ -397,7 +437,7 @@ function enqueueSpeech(text) {
   const item = { text, gen: ttsGen };
   const eng = ttsEngine();
   if (eng === 'openai') item.blob = openaiSpeech(text, S.keys.openai.trim(), S.ttsVoice).catch(() => null);
-  if (eng === 'gemini') item.blob = geminiSpeech(text, S.keys.gemini.trim()).catch(() => null);
+  if (eng === 'gemini') item.blob = withModel('gemini', m => geminiSpeech(text, S.keys.gemini.trim(), m), 'tts').catch(() => null);
   ttsQueue.push(item);
   pumpSpeech();
 }
@@ -411,6 +451,7 @@ async function pumpSpeech() {
     if (item.gen === ttsGen) await (blob ? playBlob(blob) : deviceSay(item.text));
   } catch {}
   ttsPlaying = false;
+  speakEndAt = performance.now();
   pumpSpeech();
 }
 function playBlob(blob) {
@@ -623,12 +664,12 @@ function drawHUD(now) {
 }
 
 /* ================= UI wiring ================= */
-function setMicUI(on) {
-  const ptt = on && !rec?.live;
-  $('mic').classList.toggle('on', ptt);
+function setMicUI() { bump(); }
+function updateLiveUI() {
+  $('mic').classList.toggle('on', live);
+  $('mic-label').textContent = live ? t('micOn') : t('micOff');
   bump();
 }
-function updateLiveUI() { $('live').classList.toggle('on', live); bump(); }
 const meterBars = [];
 (() => { const m = $('meter'); for (let i = 0; i < 28; i++) { const b = document.createElement('i'); m.appendChild(b); meterBars.push(b); } })();
 let lastState = '';
@@ -669,7 +710,7 @@ function applyLang() {
 }
 function updateChip() { $('model-chip').textContent = `${SHORT[S.provider]} · ${modelFor(S.provider) || '—'}`; }
 function openSettings() { $('sheet').hidden = false; }
-function closeSettings() { $('sheet').hidden = true; checkKeysBanner(); }
+function closeSettings() { $('sheet').hidden = true; checkKeysBanner(); autoStart(); }
 
 function fillProviders() {
   const sel = $('provider'); sel.innerHTML = '';
@@ -709,6 +750,8 @@ function bindSettings() {
   bindVal('tts-engine', 'ttsEngine'); bindVal('tts-voice', 'ttsVoice'); bindVal('stt-engine', 'sttEngine'); bindVal('vad', 'vad');
   bindChk('tts-on', 'ttsOn', () => { if (!S.ttsOn) stopSpeaking(); });
   bindChk('cam-attach', 'camAttach');
+  bindChk('auto-cam', 'autoCam');
+  bindChk('always-listen', 'alwaysListen', () => { if (!S.alwaysListen && live) setLive(false); });
   $('cam-device').onchange = async () => { S.camDevice = $('cam-device').value; save(); if (camStream && camKind === 'camera') { camStop(); await camStart(); } };
   populateCams();
   $('fetch-models').onclick = async () => {
@@ -724,11 +767,7 @@ function bindSettings() {
 }
 function bindUI() {
   $('composer').onsubmit = e => { e.preventDefault(); const v = $('text').value; $('text').value = ''; ask(v); };
-  const mic = $('mic');
-  mic.addEventListener('pointerdown', e => { e.preventDefault(); mic.setPointerCapture?.(e.pointerId); ensureAudioCtx(); startRecording(); });
-  for (const ev of ['pointerup', 'pointercancel']) mic.addEventListener(ev, stopRecording);
-  mic.addEventListener('contextmenu', e => e.preventDefault());
-  $('live').onclick = () => { ensureAudioCtx(); setLive(!live); };
+  $('mic').onclick = () => { ensureAudioCtx(); setLive(!live); };
   $('cam').onclick = camToggle;
   $('cam-enable').onclick = camStart;
   $('screen').hidden = NATIVE || !navigator.mediaDevices?.getDisplayMedia || /OculusBrowser|Quest|Android/i.test(navigator.userAgent);
@@ -782,11 +821,26 @@ const core = {
 };
 
 /* ================= boot ================= */
+let autoStarting = false;
 bindSettings();
 bindUI();
 applyLang();
 setupXR();
 requestAnimationFrame(loop);
+
+// Mic always listening + camera always seeing, as soon as there is a key.
+// Mic first, then camera: one permission dialog at a time.
+// Browsers keep audio suspended until the first tap; resume on any interaction.
+['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => { if (audioCtx?.state === 'suspended') audioCtx.resume(); }, { passive: true }));
+async function autoStart() {
+  if (autoStarting || !hasAnyKey()) return;
+  autoStarting = true;
+  try {
+    if (S.alwaysListen && !live && sttReady()) { ensureAudioCtx(); await setLive(true, { quiet: true }); }
+    if (S.autoCam && !camStream) await camStart();
+  } finally { autoStarting = false; }
+}
+autoStart();
 
 // test hooks
 window.__questai = { S, msgs, ask, setLive, orbState, showBoxes, get live() { return live; }, core };

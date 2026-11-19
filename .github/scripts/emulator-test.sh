@@ -26,20 +26,19 @@ shot 0-after-launch
 sleep 6
 shot 1-first-launch
 adb shell pidof $PKG > shots/pid.txt || echo 'not running' > shots/pid.txt
-for i in 1 2 3; do
-  tap '^(While using the app|Allow|ALLOW)$' || break
-  sleep 2
-done
-sleep 4
-shot 2-main
-dump 2-main
+allow_all() { for i in 1 2 3 4; do sleep 2; tap '^(While using the app|Allow|ALLOW)$' || break; done; }
 
-# WebView content is not in the accessibility dump, so tap by position (pixel_tablet, 2560x1600, RTL layout)
-adb shell input tap 72 108; sleep 2; shot 3-settings
-adb shell input tap 2100 900; sleep 2            # tap the dimmed area to close settings
-adb shell input tap 1704 1380; sleep 8; shot 4-camera
-adb shell input tap 1516 1380; sleep 6; shot 4b-whats-this
-adb shell input tap 1042 1380; sleep 3; shot 5-live
+# No key yet: nothing should be requested. Add a (fake) Gemini key in settings.
+shot 2-no-key
+adb shell input tap 72 108; sleep 2
+adb shell input tap 352 1120; sleep 1
+adb shell input text AIzaFAKEKEYFORTEST; sleep 1
+shot 3-settings
+adb shell input tap 2100 900; sleep 2            # close settings -> mic + camera start automatically
+shot 3b-first-dialog
+allow_all
+sleep 6
+shot 4-always-on                                  # expect camera live + mic listening
 adb shell input tap 160 54; sleep 2; shot 6-english
 
 adb shell dumpsys package $PKG | grep -E 'permission|granted=' > shots/permissions.txt
