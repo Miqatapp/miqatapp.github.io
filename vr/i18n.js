@@ -26,6 +26,7 @@ export const STR = {
     needKey: 'حط مفتاح {p} في الإعدادات', needSttKey: 'الكلام بالصوت يحتاج مفتاح OpenAI أو Gemini',
     noKeys: 'حط مفتاح API واحد على الأقل عشان تبدأ', openSettings: 'افتح الإعدادات',
     permMic: 'المايك مقفول — التطبيق يحتاج إذن عشان يسمعك.', permCam: 'الكاميرا مقفولة — التطبيق يحتاج إذن عشان يشوف.',
+    permBoth: 'المايك والكاميرا مقفولين — التطبيق يحتاج إذن عشان يسمعك ويشوف.',
     permAllow: 'اسمح', permSettings: 'إعدادات التطبيق',
     noCam: 'ما قدرت أفتح الكاميرا: {e}', error: 'خطأ', stopped: 'تم الإيقاف',
     modelsLoaded: 'المفتاح شغّال ✓ — {n} موديل', found: 'حدّدت {n}',
@@ -61,6 +62,7 @@ export const STR = {
     needKey: 'Add your {p} key in Settings', needSttKey: 'Voice needs an OpenAI or Gemini key',
     noKeys: 'Add at least one API key to start', openSettings: 'Open Settings',
     permMic: 'Microphone is blocked — the app needs permission to hear you.', permCam: 'Camera is blocked — the app needs permission to see.',
+    permBoth: 'Microphone and camera are blocked — the app needs permission to hear and see.',
     permAllow: 'Allow', permSettings: 'App settings',
     noCam: "Couldn't open the camera: {e}", error: 'Error', stopped: 'Stopped',
     modelsLoaded: 'Key works ✓ — {n} models', found: 'Found {n}',
@@ -73,9 +75,10 @@ export const STR = {
 
 // Appended to every request that carries an image. Gemini is trained on exactly this box format.
 export const BOX_INSTRUCTIONS = `
-When an image is attached and the user asks you to find, locate, point at, show, count or identify specific things in it (or when marking objects clearly helps your answer), append at the very end of your reply one tag in this exact format and nothing after it:
+An image from the headset camera is attached. Whenever the user asks about anything visible — "what is this", "what's in front of me", "where is X", "find/show/point at X", "what are these", "how many", "read this" — you MUST mark the relevant objects. For "what is this" mark the main object the user is looking at (usually near the centre).
+Append at the very end of your reply exactly one tag in this format and nothing after it:
 <boxes>[{"label":"<short name in the user's language>","box":[ymin,xmin,ymax,xmax]}]</boxes>
-Coordinates are integers normalized to 0-1000 relative to the image. Never mention the tag or the coordinates in your spoken text.`;
+Coordinates are integers normalized to 0-1000 relative to the image, tight around each object. Never mention the tag or coordinates in your spoken text. Omit the tag only when the question has nothing to do with what is visible.`;
 
 export function t(lang, k, vars) {
   let s = (STR[lang] && STR[lang][k]) ?? STR.en[k] ?? k;
