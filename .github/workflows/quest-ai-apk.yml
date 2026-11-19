@@ -2,7 +2,7 @@ name: Build Quest AI APK
 
 on:
   push:
-    paths: ['android/**', 'vr/**', '.github/workflows/quest-ai-apk.yml']
+    paths: ['android/**', 'vr/**', '.github/workflows/quest-ai-apk.yml', '.github/scripts/**']
   workflow_dispatch:
 
 permissions:

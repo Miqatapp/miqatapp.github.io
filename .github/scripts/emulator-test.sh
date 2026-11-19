@@ -27,7 +27,7 @@ sleep 6
 shot 1-first-launch
 adb shell pidof $PKG > shots/pid.txt || echo 'not running' > shots/pid.txt
 for i in 1 2 3; do
-  tap 'While using the app|Allow|ALLOW|Only this time' || break
+  tap '^(While using the app|Allow|ALLOW)$' || break
   sleep 2
 done
 sleep 4
