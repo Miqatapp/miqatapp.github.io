@@ -62,9 +62,16 @@ function showBanner(text, primary, onPrimary, secondary, onSecondary) {
   $('banner').hidden = false;
 }
 function hideBanner() { $('banner').hidden = true; }
-function permissionBanner(kind, retry) {
-  showBanner(t(kind === 'cam' ? 'permCam' : 'permMic'), t('permAllow'), retry,
-    NATIVE ? t('permSettings') : null, () => window.QuestAINative?.openAppSettings());
+const denied = new Set();
+function permissionBanner(kind) {
+  denied.add(kind);
+  const text = denied.size > 1 ? t('permBoth') : t(kind === 'cam' ? 'permCam' : 'permMic');
+  const retry = async () => {
+    const kinds = [...denied]; denied.clear();
+    if (kinds.includes('mic')) await setLive(true);
+    if (kinds.includes('cam')) await camStart();
+  };
+  showBanner(text, t('permAllow'), retry, NATIVE ? t('permSettings') : null, () => window.QuestAINative?.openAppSettings());
 }
 function checkKeysBanner() {
   if (!hasAnyKey()) showBanner(t('noKeys'), t('openSettings'), openSettings);
