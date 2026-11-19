@@ -184,7 +184,7 @@ async function ask(text, { forceImage = false } = {}) {
     if (!(await camStart())) return;
     await new Promise(r => setTimeout(r, 600));
   }
-  const image = camStream && (forceImage || S.camAttach) ? snapshot() : null;
+  const image = camStream && !document.hidden && (forceImage || S.camAttach) ? snapshot() : null;
   if (!text && image) text = t('whatsThisQ');
   if (!text) return;
 
@@ -417,6 +417,7 @@ async function setLive(on, { quiet = false } = {}) {
     if (rec?.live) { rec = null; setMicUI(false); }
     closePipeIfIdle();
   }
+  if (NATIVE) { try { window.QuestAINative.setBackgroundListening(live); } catch {} }
   updateLiveUI();
 }
 function resumeListening() { if (!live) closePipeIfIdle(); }
@@ -448,7 +449,11 @@ async function pumpSpeech() {
   ttsPlaying = true;
   try {
     const blob = item.blob ? await item.blob : null;
-    if (item.gen === ttsGen) await (blob ? playBlob(blob) : deviceSay(item.text));
+    if (item.gen === ttsGen) {
+      if (blob) await playBlob(blob);
+      else if (canDeviceSpeak()) await deviceSay(item.text);
+      else if (!warnedNoVoice) { warnedNoVoice = true; setStatus(t('noVoice'), true); }
+    }
   } catch {}
   ttsPlaying = false;
   speakEndAt = performance.now();
@@ -469,6 +474,8 @@ function playBlob(blob) {
     a.play().catch(done);
   });
 }
+let warnedNoVoice = false;
+const canDeviceSpeak = () => NATIVE ? !!window.QuestAINative.canSpeak() : 'speechSynthesis' in window;
 const nativeWaiters = new Map(); let nativeId = 0;
 window.questaiSpoken = id => { const f = nativeWaiters.get(id); nativeWaiters.delete(id); f?.(); };
 function deviceSay(text) {
@@ -589,17 +596,27 @@ function boxRect([y0, x0, y1, x1], w, h) {
   return { x: c(Math.min(x0, x1)) * w, y: c(Math.min(y0, y1)) * h, w: Math.abs(c(x1) - c(x0)) * w, h: Math.abs(c(y1) - c(y0)) * h };
 }
 function drawBox(g, r, label, i, p, s = 1) {
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260 + i);
   const L = Math.min(r.w, r.h) * 0.22 * p + 6 * s;
   const lime = '#d4ff3f';
   g.save();
-  g.fillStyle = `rgba(212,255,63,${0.07 * p})`; g.fillRect(r.x, r.y, r.w, r.h);
-  g.strokeStyle = `rgba(212,255,63,${0.35 * p})`; g.lineWidth = 1 * s; g.strokeRect(r.x, r.y, r.w, r.h);
+  // glass fill with a soft vertical sheen
+  const sheen = g.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+  sheen.addColorStop(0, `rgba(212,255,63,${0.14 * p})`); sheen.addColorStop(1, `rgba(212,255,63,${0.03 * p})`);
+  g.fillStyle = sheen; g.fillRect(r.x, r.y, r.w, r.h);
+  g.strokeStyle = `rgba(212,255,63,${(0.25 + 0.2 * pulse) * p})`; g.lineWidth = 1 * s; g.strokeRect(r.x, r.y, r.w, r.h);
+  g.shadowColor = 'rgba(212,255,63,.9)'; g.shadowBlur = (8 + 10 * pulse) * s;
   g.strokeStyle = lime; g.lineWidth = 3 * s; g.lineCap = 'square';
   g.beginPath();
   for (const [cx, cy, dx, dy] of [[r.x, r.y, 1, 1], [r.x + r.w, r.y, -1, 1], [r.x, r.y + r.h, 1, -1], [r.x + r.w, r.y + r.h, -1, -1]]) {
     g.moveTo(cx, cy + dy * L); g.lineTo(cx, cy); g.lineTo(cx + dx * L, cy);
   }
   g.stroke();
+  g.shadowBlur = 0;
+  // centre tick
+  g.strokeStyle = `rgba(212,255,63,${0.6 * p})`; g.lineWidth = 1.5 * s;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, k = 5 * s;
+  g.beginPath(); g.moveTo(cx - k, cy); g.lineTo(cx + k, cy); g.moveTo(cx, cy - k); g.lineTo(cx, cy + k); g.stroke();
   if (p > 0.6 && label) {
     const tag = `${String(i + 1).padStart(2, '0')}  ${label}`;
     g.font = `500 ${13 * s}px PlexMono, Plex, monospace`;

@@ -1,6 +1,7 @@
 export const STR = {
   ar: {
     title: 'Quest AI',
+    noVoice: 'ما فيه صوت متاح للرد على هذا الجهاز — أضف مفتاح OpenAI أو Gemini للصوت.',
     micOn: 'أسمعك', micOff: 'المايك مطفأ', alwaysListen: 'المايك شغّال دائماً (بدون ضغط)', autoCam: 'شغّل الكاميرا تلقائياً عند الفتح',
     modelSwitched: 'الموديل القديم انتهى — حوّلت تلقائياً إلى {m}',
     errKey: 'المفتاح غير صحيح أو ما له صلاحية. راجعه في الإعدادات.', errQuota: 'وصلت حد الاستخدام عند المزوّد. انتظر شوي أو غيّر المزوّد.',
@@ -35,6 +36,7 @@ export const STR = {
   },
   en: {
     title: 'Quest AI',
+    noVoice: 'No voice available on this device — add an OpenAI or Gemini key for speech.',
     micOn: 'Listening', micOff: 'Mic off', alwaysListen: 'Mic always on (no button needed)', autoCam: 'Turn on camera when the app opens',
     modelSwitched: 'Old model retired — switched to {m}',
     errKey: 'The API key is invalid or not allowed. Check it in Settings.', errQuota: 'Usage limit reached at the provider. Wait a bit or switch provider.',

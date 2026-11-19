@@ -193,8 +193,12 @@ public class MainActivity extends Activity {
     web.saveState(out);
   }
 
+  // The WebView is deliberately not paused in onPause/onStop so listening and speaking continue
+  // while another app is in front.
+
   @Override
   protected void onDestroy() {
+    stopService(new Intent(this, ListenService.class));
     if (tts != null) tts.shutdown();
     web.destroy();
     super.onDestroy();
@@ -222,5 +226,15 @@ public class MainActivity extends Activity {
     }
 
     @JavascriptInterface public void stopSpeaking() { if (ttsReady) tts.stop(); }
+
+    /** Keep the microphone alive while other apps are in front (foreground service). */
+    @JavascriptInterface public void setBackgroundListening(boolean on) {
+      runOnUiThread(() -> {
+        Intent i = new Intent(MainActivity.this, ListenService.class);
+        try {
+          if (on) startForegroundService(i); else stopService(i);
+        } catch (Exception e) { Log.w(TAG, "listen service", e); }
+      });
+    }
   }
 }
