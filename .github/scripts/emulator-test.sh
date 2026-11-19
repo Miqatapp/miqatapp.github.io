@@ -26,7 +26,7 @@ shot 0-after-launch
 sleep 6
 shot 1-first-launch
 adb shell pidof $PKG > shots/pid.txt || echo 'not running' > shots/pid.txt
-allow_all() { for i in 1 2 3 4; do sleep 2; tap '^(While using the app|Allow|ALLOW)$' || break; done; }
+allow_all() { for i in 1 2 3 4 5 6; do sleep 2; tap '^(While using the app|Allow|ALLOW)$'; done; }
 
 # No key yet: nothing should be requested. Add a (fake) Gemini key in settings.
 shot 2-no-key
