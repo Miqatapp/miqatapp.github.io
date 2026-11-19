@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f17">
+<title>Quest AI</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><img src="icon-192.png" alt=""><span data-i="title"></span></div>
+  <div class="hdr-actions">
+    <button id="install" class="ghost" hidden data-i="install"></button>
+    <button id="lang" class="ghost"></button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="chat" data-i="tabChat"></button>
+  <button class="tab" data-tab="settings" data-i="tabSettings"></button>
+</nav>
+
+<main>
+  <!-- CHAT -->
+  <section id="tab-chat" class="pane active">
+    <div class="xr-row">
+      <button id="enter-ar" class="primary" disabled data-i="enterAR"></button>
+      <button id="enter-vr" class="primary alt" disabled data-i="enterVR"></button>
+    </div>
+    <p id="xr-note" class="note"></p>
+
+    <div class="cam-box" id="cam-box" hidden>
+      <video id="cam-video" playsinline muted></video>
+      <span class="cam-badge" data-i="camWillAttach"></span>
+    </div>
+
+    <div id="log" class="log"></div>
+    <div id="status" class="status"></div>
+
+    <div class="composer">
+      <input id="text" autocomplete="off">
+      <button id="send" class="primary" data-i="send"></button>
+    </div>
+    <div class="tools">
+      <button id="mic" class="tool big" data-i="holdTalk"></button>
+      <button id="cam" class="tool"></button>
+      <button id="snap" class="tool" data-i="whatsThis"></button>
+      <button id="stop" class="tool" data-i="stop"></button>
+      <button id="clear" class="tool" data-i="clear"></button>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" class="pane">
+    <div class="card">
+      <label for="provider" data-i="provider"></label>
+      <select id="provider"></select>
+      <label for="model" data-i="model"></label>
+      <div class="inline">
+        <input id="model" class="ltr" list="models" autocomplete="off">
+        <datalist id="models"></datalist>
+      </div>
+      <button id="fetch-models" class="ghost wide" data-i="fetchModels"></button>
+      <div id="models-status" class="note"></div>
+    </div>
+
+    <div class="card">
+      <h3 data-i="keys"></h3>
+      <p class="note" data-i="keyHint"></p>
+      <label for="key-openai">OpenAI</label>
+      <div class="secret"><input id="key-openai" type="password" class="ltr" autocomplete="off" placeholder="sk-..."><button class="eye" data-for="key-openai">👁</button></div>
+      <label for="key-anthropic">Anthropic (Claude)</label>
+      <div class="secret"><input id="key-anthropic" type="password" class="ltr" autocomplete="off" placeholder="sk-ant-..."><button class="eye" data-for="key-anthropic">👁</button></div>
+      <label for="key-gemini">Google Gemini</label>
+      <div class="secret"><input id="key-gemini" type="password" class="ltr" autocomplete="off" placeholder="AIza..."><button class="eye" data-for="key-gemini">👁</button></div>
+      <div id="custom-fields">
+        <label for="custom-preset" data-i="customPreset"></label>
+        <select id="custom-preset" class="ltr">
+          <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+          <option value="https://api.deepseek.com/v1">DeepSeek</option>
+          <option value="https://api.x.ai/v1">xAI Grok</option>
+          <option value="https://api.mistral.ai/v1">Mistral</option>
+          <option value="https://api.groq.com/openai/v1">Groq</option>
+          <option value="">Other / أخرى</option>
+        </select>
+        <label for="custom-base" data-i="customBase"></label>
+        <input id="custom-base" class="ltr" placeholder="https://openrouter.ai/api/v1">
+        <label for="key-custom" data-i="customKey"></label>
+        <div class="secret"><input id="key-custom" type="password" class="ltr" autocomplete="off"><button class="eye" data-for="key-custom">👁</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 data-i="camera"></h3>
+      <label for="cam-device" data-i="camDevice"></label>
+      <select id="cam-device"></select>
+      <label class="check"><input id="cam-attach" type="checkbox"><span data-i="camAttach"></span></label>
+    </div>
+
+    <div class="card">
+      <h3 data-i="voice"></h3>
+      <label class="check"><input id="tts-on" type="checkbox"><span data-i="ttsOn"></span></label>
+      <label for="tts-engine" data-i="ttsEngine"></label>
+      <select id="tts-engine">
+        <option value="auto" data-i="auto"></option>
+        <option value="openai">OpenAI TTS</option>
+        <option value="browser" data-i="browser"></option>
+      </select>
+      <label for="tts-voice" data-i="ttsVoice"></label>
+      <select id="tts-voice" class="ltr">
+        <option>alloy</option><option>echo</option><option>fable</option><option>nova</option><option>onyx</option><option>shimmer</option>
+      </select>
+      <label for="stt-engine" data-i="sttEngine"></label>
+      <select id="stt-engine">
+        <option value="auto" data-i="auto"></option>
+        <option value="openai">OpenAI Whisper</option>
+        <option value="gemini">Gemini</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <label for="system" data-i="system"></label>
+      <textarea id="system" rows="4"></textarea>
+    </div>
+  </section>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
