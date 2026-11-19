@@ -2,43 +2,40 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
   <uses-permission android:name="android.permission.INTERNET" />
-  <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" android:version="1" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <uses-permission android:name="android.permission.CAMERA" />
+  <!-- Meta Quest 3 / 3S passthrough cameras (Horizon OS v74+) -->
+  <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
+
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
   <queries>
-    <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+    <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
   </queries>
 
   <application
-      android:label="@string/app_name"
+      android:label="Quest AI"
       android:icon="@mipmap/ic_launcher"
       android:allowBackup="false"
-      android:supportsRtl="true">
-
-    <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
+      android:supportsRtl="true"
+      android:hardwareAccelerated="true"
+      android:theme="@style/AppTheme">
 
     <activity
-        android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+        android:name=".MainActivity"
         android:exported="true"
-        android:label="@string/app_name"
-        android:theme="@android:style/Theme.Translucent.NoTitleBar">
-      <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${appUrl}" />
-      <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@color/bg" />
-      <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/bg" />
-      <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY" android:value="customtabs" />
-      <meta-data android:name="android.support.customtabs.trusted.DISPLAY_MODE" android:value="standalone" />
-
+        android:launchMode="singleTask"
+        android:resizeableActivity="true"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|uiMode">
+      <!-- default panel size on Quest -->
+      <layout android:defaultWidth="1280dp" android:defaultHeight="800dp" />
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
-      <intent-filter android:autoVerify="true">
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="https" android:host="${hostName}" android:pathPrefix="/vr" />
-      </intent-filter>
     </activity>
-
-    <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" android:exported="false" />
   </application>
 </manifest>

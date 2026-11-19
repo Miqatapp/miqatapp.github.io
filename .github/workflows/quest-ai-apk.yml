@@ -2,7 +2,7 @@ name: Build Quest AI APK
 
 on:
   push:
-    paths: ['android/**', '.github/workflows/quest-ai-apk.yml']
+    paths: ['android/**', 'vr/**', '.github/workflows/quest-ai-apk.yml', '.github/scripts/**']
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: QuestAI-apk, path: QuestAI.apk }
       - name: Publish release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: quest-ai
@@ -33,5 +34,37 @@ jobs:
           make_latest: true
           files: QuestAI.apk
           body: |
-            Quest AI — مساعد ذكاء اصطناعي لنظارة Meta Quest.
-            حمّل QuestAI.apk وثبّته على النظارة (يحتاج وضع المطوّر + SideQuest أو Meta Quest Developer Hub).
+            Quest AI — مساعد ذكاء اصطناعي لنظارة Meta Quest (تطبيق أصلي).
+            حمّل QuestAI.apk وثبّته على النظارة (وضع المطوّر + SideQuest أو Meta Quest Developer Hub).
+
+  # Installs the APK on an Android emulator, launches it and captures screenshots + the app's console log.
+  emulator-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: QuestAI-apk }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 32
+          arch: x86_64
+          target: google_apis
+          profile: pixel_tablet
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -camera-front emulated
+          script: bash .github/scripts/emulator-test.sh
+      - name: Publish screenshots to branch quest-ai-ci
+        if: always()
+        run: |
+          cd shots || exit 0
+          git init -q && git checkout -q -b quest-ai-ci
+          git config user.name github-actions && git config user.email github-actions@users.noreply.github.com
+          git add -A && git commit -qm "CI screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" quest-ai-ci
