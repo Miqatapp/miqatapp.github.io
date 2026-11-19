@@ -2,7 +2,8 @@ import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pi
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '3.0';
+const VERSION = '3.3';
+let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
 
@@ -13,7 +14,7 @@ const DEF = {
   keys: { openai: '', anthropic: '', gemini: '', custom: '' },
   customBase: 'https://openrouter.ai/api/v1',
   system: '', ttsOn: true, ttsEngine: 'auto', ttsVoice: 'nova', sttEngine: 'auto', vad: 'medium',
-  camAttach: true, camDevice: '', alwaysListen: true, autoCam: true, ttsModel: '',
+  camAttach: true, camDevice: '', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
 };
 function load() {
   try {
@@ -22,6 +23,17 @@ function load() {
   } catch { return JSON.parse(JSON.stringify(DEF)); }
 }
 const S = load();
+const AR_LAUNCH = /[#&]ar=1/.test(location.hash);
+(() => {   // the native app opens AR mode in the Quest browser and passes the settings in the URL fragment
+  const m = location.hash.match(/cfg=([^&]+)/);
+  if (!m) return;
+  try {
+    const cfg = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+    Object.assign(S, cfg, { keys: { ...S.keys, ...(cfg.keys || {}) }, models: { ...S.models, ...(cfg.models || {}) } });
+    localStorage.setItem('questai.settings', JSON.stringify(S));
+  } catch {}
+  history.replaceState(null, '', location.pathname);   // don't leave keys in the address/history
+})();
 if (!S.keys[S.provider]) { const p = Object.keys(PROVIDERS).find(p => S.keys[p]); if (p) S.provider = p; }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }
 const t = (k, v) => tr(S.lang, k, v);
@@ -50,6 +62,15 @@ function orbState() {
   if (isSpeaking()) return 'speaking';
   if (live) return 'listening';
   return 'idle';
+}
+
+/* ================= diagnostics (Settings → Diagnostics) ================= */
+const diag = [];
+function log(msg) {
+  const line = new Date().toTimeString().slice(0, 8) + '  ' + msg;
+  diag.push(line); if (diag.length > 60) diag.shift();
+  console.info('[diag] ' + msg);
+  const el = document.getElementById('diag'); if (el) el.textContent = diag.slice().reverse().join('\n');
 }
 
 /* ================= banner (permissions, missing keys) ================= */
@@ -177,6 +198,7 @@ async function withModel(p, fn, kind = 'chat') {
 }
 function friendlyError(e) {
   const st = e?.status, m = String(e?.message || e || '');
+  if (e?.timeout || e?.name === 'TimeoutError') return t('errTimeout');
   if (st === 401 || st === 403 || /api key|unauthori|permission denied|invalid.*key/i.test(m)) return t('errKey');
   if (st === 429 || /quota|rate limit|resource.?exhausted/i.test(m)) return t('errQuota');
   if (isModelGone(e)) return t('errModel');
@@ -201,7 +223,7 @@ async function ask(text, { forceImage = false } = {}) {
   if (busy) abortCtl?.abort();
   stopSpeaking();
 
-  const u = { role: 'user', text, image };
+  const u = { role: 'user', text, image, snapT: lastSnapT };
   const a = { role: 'assistant', text: '' };
   const ctl = new AbortController();
   abortCtl = ctl; busy = true; looking = !!image;
@@ -229,9 +251,12 @@ async function ask(text, { forceImage = false } = {}) {
   const system = (S.system.trim() || t('sysDefault')) + (hasImages ? '\n' + BOX_INSTRUCTIONS : '');
   try {
     const history = msgs.filter(m => m !== a && !m.skip && m.text).map(m => ({ role: m.role, text: m.raw || m.text, image: m.image }));
+    const t0 = performance.now();
+    log(`ask → ${p}/${modelFor(p)}${image ? ' + image ' + Math.round(image.length * 0.75 / 1024) + 'KB' : ''}`);
     const full = await withModel(p, model => chat({
       provider: p, key, model, base: S.customBase, system,
-      messages: history, signal: ctl.signal,
+      messages: history, signal: ctl.signal, log: m => log(`  ${m} (${Math.round(performance.now() - t0)}ms)`),
+      preferStream: !streamBroken, onStreamBroken: () => { streamBroken = true; },
       onDelta: s => {
         if (ctl.signal.aborted) return;
         looking = false;
@@ -240,12 +265,13 @@ async function ask(text, { forceImage = false } = {}) {
     }));
     if (ctl.signal.aborted) throw new DOMException('aborted', 'AbortError');
     const { text: body, boxes } = splitBoxes(full);
+    log(`  reply done (${Math.round(performance.now() - t0)}ms, ${full.length} chars${boxes?.length ? ', ' + boxes.length + ' boxes' : ''})`);
     a.raw = full;
     a.text = clean(body) || (boxes?.length ? t('found', { n: boxes.length }) : '…');
     busy = false; looking = false; updateMsg(a); setCaption(a.text);
     if (boxes?.length && u.image) {
       u.boxes = boxes; drawThumbBoxes(u);
-      showBoxes(boxes, u.imgEl);
+      showBoxes(boxes, u.imgEl, u.snapT);
     }
     speakReady(true);
   } catch (e) {
@@ -254,7 +280,7 @@ async function ask(text, { forceImage = false } = {}) {
     } else {
       u.skip = true; a.skip = true; a.err = true;
       a.text = friendlyError(e); updateMsg(a);
-      console.warn('chat error', e?.status, e?.message);
+      log(`  error ${e?.status || e?.name || ''}: ${String(e?.message || e).slice(0, 160)}`);
     }
   } finally {
     if (abortCtl === ctl) { busy = false; abortCtl = null; }
@@ -369,6 +395,7 @@ async function finishRecording() {
   closePipeIfIdle();
   if (r.len < rate * (r.live ? 0.45 : 0.35)) { if (!r.live) setStatus(t('tooShort')); return; }
   transcribing = true; setStatus(t('transcribing'));
+  const sttT0 = performance.now();
   try {
     const wav = encodeWav(r.chunks, r.len, rate, 16000);
     const useGemini = S.sttEngine === 'gemini' || (S.sttEngine === 'auto' && !S.keys.openai);
@@ -378,7 +405,10 @@ async function finishRecording() {
     const text = useGemini ? await withModel('gemini', run) : await run();
     transcribing = false;
     const said = (text || '').trim();
-    if (!said || /^(\.|…|you|thank you\.?|thanks for watching!?|شكرا\.?|اشتركوا في القناة)$/i.test(said)) {
+    log(`heard (${Math.round(performance.now() - sttT0)}ms): "${said.slice(0, 60)}"`);
+    // ignore noise: empty, single letters/symbols, and phrases speech models invent on silence
+    if (!said || said.replace(/[^\p{L}\p{N}]/gu, '').length < 2 ||
+        /^(\.|…|you|thank you\.?|thanks for watching!?|شكرا\.?|اشتركوا في القناة|ترجمة نانسي قنقر)$/i.test(said)) {
       setStatus(r.live ? '' : t('heardNothing')); resumeListening(); return;
     }
     setStatus('');
@@ -386,7 +416,7 @@ async function finishRecording() {
   } catch (e) {
     transcribing = false;
     setStatus(friendlyError(e), true);
-    console.warn('stt error', e?.status, e?.message);
+    log(`stt error ${e?.status || e?.name || ''}: ${String(e?.message || e).slice(0, 160)}`);
     resumeListening();
   }
 }
@@ -419,6 +449,7 @@ async function setLive(on, { quiet = false } = {}) {
     if (!sttReady()) { if (!quiet) setStatus(t('needSttKey'), true); return; }
     if (!(await openPipeOrExplain(() => setLive(true)))) return;
     live = true; vad.pre = []; vad.run = 0;
+    log('listening on');
     setStatus('');
   } else {
     live = false;
@@ -535,11 +566,13 @@ async function camStart() {
     try { s = await tryGet(S.camDevice ? { deviceId: { exact: S.camDevice } } : { facingMode: 'environment' }); }
     catch (e) { if (e.name === 'NotAllowedError' || !S.camDevice) throw e; s = await tryGet({}); }
   } catch (e) {
+    log(`camera failed: ${e.name} ${e.message || ''}`);
     if (e.name === 'NotAllowedError' || e.name === 'SecurityError') permissionBanner('cam', camStart);
     else setStatus(t('noCam', { e: e.message || e.name }), true);
     return false;
   }
   attachStream(s, 'camera');
+  log(`camera on (${s.getVideoTracks()[0]?.label || 'camera'})`);
   populateCams();
   return true;
 }
@@ -563,13 +596,15 @@ function camStop() {
 const camToggle = () => (camStream && camKind === 'camera') ? camStop() : camStart();
 const screenToggle = () => (camStream && camKind === 'screen') ? camStop() : screenStart();
 const snapCanvas = document.createElement('canvas');
+let lastSnapT = 0;
 function snapshot() {
   const v = camVideo;
   if (!v.videoWidth) return null;
-  const sc = Math.min(1, 1024 / Math.max(v.videoWidth, v.videoHeight));
+  const sc = Math.min(1, 768 / Math.max(v.videoWidth, v.videoHeight));
   snapCanvas.width = Math.round(v.videoWidth * sc); snapCanvas.height = Math.round(v.videoHeight * sc);
   snapCanvas.getContext('2d').drawImage(v, 0, 0, snapCanvas.width, snapCanvas.height);
-  return snapCanvas.toDataURL('image/jpeg', 0.82);
+  lastSnapT = performance.now();
+  return snapCanvas.toDataURL('image/jpeg', 0.75);
 }
 async function populateCams() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -597,8 +632,11 @@ const hud = { scanUntil: 0, lastT: 0 };
 const hudCanvas = $('hud'), hg = hudCanvas.getContext('2d');
 const tracker = new Tracker();
 // The model boxes objects on the frame it saw; the tracker then follows them live.
-function showBoxes(boxes, img) {
-  const go = () => tracker.start(boxes, img);
+function showBoxes(boxes, img, snapT) {
+  const go = () => {
+    tracker.start(boxes, img);
+    if (xr?.presenting()) xr.placeBoxes(boxes, snapT, img.naturalWidth, img.naturalHeight);  // pin on the real object
+  };
   img.complete ? go() : img.addEventListener('load', go, { once: true });
 }
 function boxRect([y0, x0, y1, x1], w, h) {
@@ -775,6 +813,11 @@ function bindSettings() {
   bindChk('tts-on', 'ttsOn', () => { if (!S.ttsOn) stopSpeaking(); });
   bindChk('cam-attach', 'camAttach');
   bindChk('auto-cam', 'autoCam');
+  for (const [id, k] of [['ar-fov', 'arFov'], ['ar-offx', 'arOffX'], ['ar-offy', 'arOffY']]) {
+    const el = $(id), out = $(id + '-v');
+    el.value = S[k]; out.textContent = S[k];
+    el.oninput = () => { S[k] = +el.value; out.textContent = el.value; save(); };
+  }
   bindChk('always-listen', 'alwaysListen', () => { if (!S.alwaysListen && live) setLive(false); });
   $('cam-device').onchange = async () => { S.camDevice = $('cam-device').value; save(); if (camStream && camKind === 'camera') { camStop(); await camStart(); } };
   populateCams();
@@ -814,15 +857,25 @@ window.questaiBack = () => { if (!$('sheet').hidden) { closeSettings(); return t
 if (!NATIVE && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 /* ================= WebXR (browser on Quest only; loaded lazily) ================= */
+const AR_URL = 'https://miqatapp.github.io/vr/';
+function openARFromApp() {
+  const cfg = { keys: S.keys, provider: S.provider, models: S.models, lang: S.lang, customBase: S.customBase, system: S.system,
+    ttsOn: S.ttsOn, ttsEngine: S.ttsEngine, ttsVoice: S.ttsVoice, ttsModel: S.ttsModel, sttEngine: S.sttEngine, vad: S.vad,
+    camAttach: S.camAttach, arFov: S.arFov, arOffX: S.arOffX, arOffY: S.arOffY };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(cfg)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  window.QuestAINative.openUrl(AR_URL + '#ar=1&cfg=' + b64);
+}
 let xr = null;
 async function setupXR() {
-  if (NATIVE || !navigator.xr || !window.isSecureContext) return;
+  if (NATIVE) { $('enter-ar').hidden = false; $('enter-ar').onclick = openARFromApp; return; }
+  if (!navigator.xr || !window.isSecureContext) return;
   const [v, a] = await Promise.all([
     navigator.xr.isSessionSupported('immersive-vr').catch(() => false),
     navigator.xr.isSessionSupported('immersive-ar').catch(() => false),
   ]);
   if (!v && !a) return;
   $('enter-vr').hidden = !v; $('enter-ar').hidden = !a;
+  if (AR_LAUNCH && a) { $('ar-gate').hidden = false; $('ar-go').onclick = () => { $('ar-gate').hidden = true; go('immersive-ar'); }; }
   const go = async mode => {
     try {
       ensureAudioCtx();
@@ -845,6 +898,7 @@ const core = {
 };
 
 /* ================= boot ================= */
+log(`Quest AI ${VERSION} ${NATIVE ? 'app' : 'web'} · ${navigator.userAgent.match(/(OculusBrowser|Quest[^;)]*|Android [\d.]+)/)?.[0] || ''}`);
 let autoStarting = false;
 bindSettings();
 bindUI();
