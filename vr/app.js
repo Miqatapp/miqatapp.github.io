@@ -663,6 +663,7 @@ function applyLang() {
   $('text').placeholder = t('typePh');
   $('system').placeholder = t('sysDefault');
   lastState = '';
+  if (!statusErr) setStatus('');
   renderEmpty(); updateCamUI(); updateLiveUI(); checkKeysBanner(); updateChip();
   bump();
 }
