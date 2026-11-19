@@ -1,4 +1,4 @@
-const CACHE = 'questai-v1';
+const CACHE = 'questai-v2';
 const SHELL = ['./', './app.js', './ai.js', './i18n.js', './style.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); });
 self.addEventListener('activate', e => e.waitUntil((async () => {
