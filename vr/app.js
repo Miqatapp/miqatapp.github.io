@@ -1,9 +1,9 @@
-import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pickModel, isModelGone, pickLiveModel, detectObjects } from './ai.js';
+import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pickModel, isModelGone, pickLiveModel, detectObjects, GEMINI_LADDER } from './ai.js';
 import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '3.3';
+const VERSION = '4.0';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -15,7 +15,7 @@ const DEF = {
   keys: { openai: '', anthropic: '', gemini: '', custom: '' },
   customBase: 'https://openrouter.ai/api/v1',
   system: '', ttsOn: true, ttsEngine: 'auto', ttsVoice: 'nova', sttEngine: 'auto', vad: 'medium',
-  camAttach: true, camDevice: '', jarvis: true, liveModel: '', liveVoice: 'Kore', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
+  camAttach: true, camDevice: '', jarvis: true, liveModel: '', liveVoice: 'Charon', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
 };
 function load() {
   try {
@@ -24,6 +24,7 @@ function load() {
   } catch { return JSON.parse(JSON.stringify(DEF)); }
 }
 const S = load();
+if (!S.ladderV1) { if (/flash-latest|3\.8-flash|2\.5-flash$/.test(S.models.gemini || '')) delete S.models.gemini; S.liveModel = ''; S.ladderV1 = true; }
 const AR_LAUNCH = /[#&]ar=1/.test(location.hash);
 (() => {   // the native app opens AR mode in the Quest browser and passes the settings in the URL fragment
   const m = location.hash.match(/cfg=([^&]+)/);
@@ -192,7 +193,34 @@ async function resolveModel(p, kind = 'chat') {
   save(); syncProviderUI();
   return m;
 }
+// Gemini: walk the fast-model ladder. A rung that is gone / out of quota / overloaded / slow
+// is set aside for a while and the next one answers straight away.
+const cooled = new Map();
+function cool(m, e) {
+  const ms = isModelGone(e) ? 6 * 3600e3 : e?.status === 429 ? 300e3 : 120e3;
+  cooled.set(m, performance.now() + ms);
+}
+const retriable = e => isModelGone(e) || e?.status === 429 || e?.status >= 500 || e?.timeout || e?.name === 'TimeoutError';
+async function withGemini(fn) {
+  const start = modelFor('gemini');
+  const rungs = [start, ...GEMINI_LADDER.filter(m => m !== start)];
+  let last;
+  for (const m of rungs) {
+    if ((cooled.get(m) || 0) > performance.now()) continue;
+    try {
+      const out = await fn(m);
+      if (m !== start) { S.models.gemini = m; save(); syncProviderUI(); log(`gemini → ${m}`); }
+      return out;
+    } catch (e) {
+      if (e?.name === 'AbortError' || !retriable(e)) throw e;
+      log(`  ${m}: ${e.status || e.name} — next model`);
+      cool(m, e); last = e;
+    }
+  }
+  throw last || new Error('no Gemini model answered');
+}
 async function withModel(p, fn, kind = 'chat') {
+  if (p === 'gemini' && kind === 'chat') return withGemini(fn);
   const current = kind === 'tts' ? (S.ttsModel || undefined) : modelFor(p);
   try { return await fn(current); }
   catch (e) {
@@ -264,6 +292,7 @@ async function ask(text, { forceImage = false } = {}) {
     const full = await withModel(p, model => chat({
       provider: p, key, model, base: S.customBase, system,
       messages: history, signal: ctl.signal, log: m => log(`  ${m} (${Math.round(performance.now() - t0)}ms)`),
+      ...(p === 'gemini' ? { firstTokenMs: 8000, totalMs: 20000 } : {}),
       preferStream: !streamBroken, onStreamBroken: () => { streamBroken = true; },
       onDelta: s => {
         if (ctl.signal.aborted) return;
@@ -586,35 +615,82 @@ async function resolveLiveModel() {
   S.liveModel = m; save();
   return m;
 }
+// Tools the Live model can call (function calling).
+const JARVIS_TOOLS = [
+  { name: 'mark_objects',
+    description: 'Draw a glowing labelled box on things in the headset camera view. Call it whenever the user asks what something is, where something is, or to show/find/point at/identify/count something they can see.',
+    parameters: { type: 'OBJECT', properties: { query: { type: 'STRING', description: 'What to mark, e.g. "keyboard", "the object in front of me", "all bottles".' } }, required: ['query'] } },
+  { name: 'open_app',
+    description: 'Open an app installed on the Meta Quest headset by its name (for example YouTube, Browser, a game).',
+    parameters: { type: 'OBJECT', properties: { name: { type: 'STRING', description: 'App name as the user said it.' } }, required: ['name'] } },
+  { name: 'open_website',
+    description: 'Open a website or search the web in the headset browser.',
+    parameters: { type: 'OBJECT', properties: { url: { type: 'STRING', description: 'Full https URL, or words to search for.' } }, required: ['url'] } },
+];
+async function jarvisTool(name, args) {
+  if (name === 'mark_objects') {
+    const turn = jarvisTurn || (jarvisTurn = { u: null, a: null, answered: false, snap: null });
+    turn.marked = true;
+    if (!camStream) return 'The camera is off.';
+    const snap = snapshotNow();
+    const boxes = await runDetection(turn, args.query || turn.u?.text || '', snap);
+    return boxes.length ? 'Marked: ' + boxes.map(b => b.label).join(', ') : 'Nothing matching was found in view.';
+  }
+  if (name === 'open_app') {
+    if (!NATIVE) return 'Opening apps only works in the installed Quest AI app.';
+    return window.QuestAINative.launchApp(String(args.name || ''));
+  }
+  if (name === 'open_website') {
+    let u = String(args.url || '').trim();
+    if (!/^https?:\/\//i.test(u)) u = 'https://www.google.com/search?q=' + encodeURIComponent(u);
+    if (NATIVE) window.QuestAINative.openUrl(u); else window.open(u, '_blank');
+    return 'Opened ' + u;
+  }
+  return 'Unknown tool';
+}
+let jarvisTuned = true, jarvisResume = null, jarvisWatch = 0;
 async function startJarvis() {
   if (jarvis) return;
   const ctx = ensureAudioCtx();
   setStatus(t('jarvisConnecting'));
   try {
     const model = await resolveLiveModel();
-    jarvis = new GeminiLive({
-      key: S.keys.gemini.trim(), model, voice: S.liveVoice, ctx, log,
+    const make = () => new GeminiLive({
+      key: S.keys.gemini.trim(), model, voice: S.liveVoice, ctx, log, tools: JARVIS_TOOLS, tuned: jarvisTuned, resume: jarvisResume,
       system: (S.system.trim() || t('sysDefault')) + '\n' + t('jarvisSys'),
       on: {
         inText: txt => {
           if (!jarvisTurn || jarvisTurn.answered) { stopSpeaking(); jarvisTurn = { u: { role: 'user', text: '' }, a: null, answered: false, snap: snapshotNow() }; pushMsg(jarvisTurn.u); }
+          if (!jarvisTurn.u) { jarvisTurn.u = { role: 'user', text: '' }; pushMsg(jarvisTurn.u); }
           jarvisTurn.u.text += txt; updateMsg(jarvisTurn.u);
         },
         outText: txt => {
           if (!jarvisTurn) { jarvisTurn = { u: null, a: null, answered: false, snap: null }; }
-          if (!jarvisTurn.a) { jarvisTurn.a = { role: 'assistant', text: '' }; pushMsg(jarvisTurn.a); maybeDetect(jarvisTurn); }
+          if (!jarvisTurn.a) { jarvisTurn.a = { role: 'assistant', text: '' }; pushMsg(jarvisTurn.a); }
           jarvisTurn.a.text += txt; updateMsg(jarvisTurn.a); setCaption(jarvisTurn.a.text);
         },
-        turnDone: () => { if (jarvisTurn) { if (jarvisTurn.u && !jarvisTurn.a) maybeDetect(jarvisTurn); jarvisTurn.answered = true; } hideCaptionSoon(); bump(); },
+        // fallback when the model answered without calling mark_objects
+        turnDone: () => { if (jarvisTurn) { if (!jarvisTurn.marked) maybeDetect(jarvisTurn); jarvisTurn.answered = true; } hideCaptionSoon(); bump(); },
         interrupted: () => { if (jarvisTurn) jarvisTurn.answered = true; bump(); },
-        closed: reason => { jarvis = null; clearInterval(jarvisFrames); if (live) { setStatus(t('jarvisReconnect')); setTimeout(() => { if (live && !jarvis) startJarvis(); }, 1500); } },
+        tool: jarvisTool,
+        resumeHandle: h => { jarvisResume = h; },
+        goAway: () => reconnectJarvis(),
+        closed: () => reconnectJarvis(),
       },
     });
-    await jarvis.connect();
+    jarvis = make();
+    try { await jarvis.connect(); }
+    catch (e) {
+      // an optional setup field this model doesn't accept → connect again with the plain setup
+      if (!jarvisTuned && !jarvisResume) throw e;
+      log('live: retry with plain setup'); jarvisTuned = false; jarvisResume = null;
+      jarvis = make(); await jarvis.connect();
+    }
     setStatus(''); updateChip();
-    clearInterval(jarvisFrames);
+    clearInterval(jarvisFrames); clearInterval(jarvisWatch);
     // keep Gemini looking: one camera frame per second
     jarvisFrames = setInterval(() => { if (jarvis?.ready && camStream && !document.hidden) jarvis.sendFrame(snapshotSmall()); }, 1000);
+    jarvisWatch = setInterval(() => { if (jarvis?.stalled()) { log('live: no answer for 20s — reconnecting'); reconnectJarvis(); } }, 2000);
   } catch (e) {
     log(`jarvis failed: ${e.message}`);
     jarvis?.close(); jarvis = null;
@@ -623,7 +699,13 @@ async function startJarvis() {
   }
   bump();
 }
-function stopJarvis() { clearInterval(jarvisFrames); jarvis?.close(); jarvis = null; jarvisTurn = null; updateChip(); }
+function reconnectJarvis() {
+  const old = jarvis; jarvis = null;
+  clearInterval(jarvisFrames); clearInterval(jarvisWatch);
+  old?.close();
+  if (live && !jarvisFailed) { setStatus(t('jarvisReconnect')); setTimeout(() => { if (live && !jarvis) startJarvis(); }, 800); }
+}
+function stopJarvis() { clearInterval(jarvisFrames); clearInterval(jarvisWatch); const j = jarvis; jarvis = null; j?.close(); jarvisTurn = null; updateChip(); }
 function jarvisText(text) {
   text = (text || '').trim(); if (!text) return;
   jarvisTurn = { u: { role: 'user', text }, a: null, answered: false, snap: snapshotNow() };
@@ -643,21 +725,30 @@ function snapshotSmall() {
 // When the question is about something visible, find it in the frame from that moment (in parallel with the spoken answer).
 async function maybeDetect(turn) {
   if (turn.detected || !turn.u?.text || !turn.snap?.image || !ASKS_ABOUT_VIEW.test(turn.u.text)) return;
+  await runDetection(turn, turn.u.text, turn.snap);
+}
+async function runDetection(turn, question, snap) {
+  if (!snap?.image) return [];
   turn.detected = true; detecting = true; bump();
   const t0 = performance.now();
+  let boxes = [];
   try {
-    const boxes = await withModel('gemini', model => detectObjects({ key: S.keys.gemini.trim(), model, image: turn.snap.image, question: turn.u.text, lang: S.lang }));
-    log(`detect: ${boxes.length} boxes (${Math.round(performance.now() - t0)}ms)`);
+    boxes = await withModel('gemini', model => detectObjects({ key: S.keys.gemini.trim(), model, image: snap.image, question, lang: S.lang }));
+    log(`detect "${question.slice(0, 40)}": ${boxes.length} boxes (${Math.round(performance.now() - t0)}ms)`);
     if (boxes.length) {
-      const img = new Image(); img.src = turn.snap.image;
-      turn.u.image = turn.snap.image; turn.u.boxes = boxes;
-      const th = document.createElement('div'); th.className = 'thumb'; th.appendChild(img);
-      turn.u.el.insertBefore(th, turn.u.txtEl); turn.u.thumb = th; turn.u.imgEl = img;
-      drawThumbBoxes(turn.u);
-      showBoxes(boxes, img, turn.snap.t);
+      const img = new Image(); img.src = snap.image;
+      const holder = turn.u || turn.a;
+      if (holder?.el && !holder.thumb) {
+        holder.image = snap.image;
+        const th = document.createElement('div'); th.className = 'thumb'; th.appendChild(img);
+        holder.el.insertBefore(th, holder.txtEl); holder.thumb = th; holder.imgEl = img;
+      }
+      if (holder) { holder.boxes = boxes; drawThumbBoxes(holder); }
+      showBoxes(boxes, img, snap.t);
     }
   } catch (e) { log(`detect error: ${e.status || ''} ${String(e.message).slice(0, 120)}`); }
   detecting = false; bump();
+  return boxes;
 }
 
 /* ================= camera / screen ================= */
@@ -936,6 +1027,7 @@ function bindSettings() {
   bindChk('tts-on', 'ttsOn', () => { if (!S.ttsOn) stopSpeaking(); });
   bindChk('cam-attach', 'camAttach');
   bindChk('auto-cam', 'autoCam');
+  bindVal('live-voice', 'liveVoice'); $('live-voice').addEventListener('change', () => { if (jarvis) reconnectJarvis(); });
   bindChk('jarvis', 'jarvis', () => { jarvisFailed = false; if (live) setLive(false).then(() => setLive(true)); });
   for (const [id, k] of [['ar-fov', 'arFov'], ['ar-offx', 'arOffX'], ['ar-offy', 'arOffY']]) {
     const el = $(id), out = $(id + '-v');

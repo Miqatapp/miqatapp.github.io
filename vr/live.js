@@ -15,8 +15,8 @@ export class GeminiLive {
   /**
    * on: { inText(text), outText(text), turnDone(), interrupted(), closed(reason) }
    */
-  constructor({ key, model, system, voice = 'Kore', ctx, log = () => {}, on = {} }) {
-    Object.assign(this, { key, model, system, voice, ctx, log, on });
+  constructor({ key, model, system, voice = 'Charon', ctx, log = () => {}, on = {}, tools = [], tuned = true, resume = null }) {
+    Object.assign(this, { key, model, system, voice, ctx, log, on, tools, tuned, resume });
     this.ws = null; this.ready = false;
     this.pending = new Int16Array(0);
     this.sources = new Set(); this.playEnd = 0;
@@ -33,7 +33,7 @@ export class GeminiLive {
       const ws = this.ws = new WebSocket(`${WS_URL}?key=${encodeURIComponent(this.key)}`);
       const timer = setTimeout(() => { reject(new Error('Live connection timed out')); try { ws.close(); } catch {} }, timeoutMs);
       ws.onopen = () => {
-        ws.send(JSON.stringify({ setup: {
+        const setup = {
           model: this.model.startsWith('models/') ? this.model : 'models/' + this.model,
           generationConfig: {
             responseModalities: ['AUDIO'],
@@ -42,7 +42,17 @@ export class GeminiLive {
           systemInstruction: { parts: [{ text: this.system }] },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-        } }));
+          // without compression an audio+video session is cut after a couple of minutes
+          contextWindowCompression: { slidingWindow: {} },
+          sessionResumption: this.resume ? { handle: this.resume } : {},
+        };
+        if (this.tools.length) setup.tools = [{ functionDeclarations: this.tools }];
+        if (this.tuned) {
+          // decide sooner that the user has finished speaking
+          setup.realtimeInputConfig = { automaticActivityDetection: { endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH', silenceDurationMs: 500, prefixPaddingMs: 150 } };
+          setup.generationConfig.mediaResolution = 'MEDIA_RESOLUTION_MEDIUM';
+        }
+        ws.send(JSON.stringify({ setup }));
       };
       ws.onmessage = async ev => {
         let msg;
@@ -69,10 +79,13 @@ export class GeminiLive {
 
   handle(msg) {
     const sc = msg.serverContent;
-    if (msg.goAway) this.log('live: server will close soon');
+    this.lastServer = performance.now();
+    if (msg.goAway) { this.log('live: server will close soon'); this.on.goAway?.(); }
+    if (msg.sessionResumptionUpdate?.resumable && msg.sessionResumptionUpdate.newHandle) this.on.resumeHandle?.(msg.sessionResumptionUpdate.newHandle);
+    if (msg.toolCall) { this.runTools(msg.toolCall.functionCalls || []); return; }
     if (!sc) return;
     if (sc.interrupted) { this.stopPlayback(); this.on.interrupted?.(); }
-    if (sc.inputTranscription?.text) { this.lastIn = performance.now(); this.waiting = true; this.on.inText?.(sc.inputTranscription.text); }
+    if (sc.inputTranscription?.text) { this.lastIn = performance.now(); if (!this.waiting) this.waitSince = performance.now(); this.waiting = true; this.on.inText?.(sc.inputTranscription.text); }
     if (sc.outputTranscription?.text) { this.waiting = false; this.on.outText?.(sc.outputTranscription.text); }
     for (const p of sc.modelTurn?.parts || []) {
       const d = p.inlineData || p.inline_data;
@@ -130,8 +143,26 @@ export class GeminiLive {
 
   sendText(text) {
     if (!this.ready) return;
-    this.waiting = true;
+    this.waiting = true; this.waitSince = performance.now();
     this.send({ realtimeInput: { text } });
+  }
+
+  async runTools(calls) {
+    const responses = [];
+    for (const c of calls) {
+      let result;
+      try { result = await this.on.tool?.(c.name, c.args || {}); }
+      catch (e) { result = { error: String(e?.message || e) }; }
+      this.log(`tool ${c.name}(${JSON.stringify(c.args || {}).slice(0, 80)}) → ${JSON.stringify(result).slice(0, 80)}`);
+      responses.push({ id: c.id, name: c.name, response: { result: result ?? 'done' } });
+    }
+    this.send({ toolResponse: { functionResponses: responses } });
+  }
+
+  /** A session can go half-dead: the socket stays open but nothing comes back. */
+  stalled() {
+    return this.ready && this.waiting && this.waitSince && performance.now() - this.waitSince > 20000 &&
+      performance.now() - (this.lastServer || 0) > 20000;
   }
 
   send(obj) { try { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(obj)); } catch {} }

@@ -175,6 +175,8 @@ public class MainActivity extends Activity {
     runOnUiThread(() -> web.evaluateJavascript("window.questaiSpoken && window.questaiSpoken(" + jsString(id) + ")", null));
   }
 
+  private static String norm(String s) { return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", ""); }
+
   private static String jsString(String s) {
     return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'";
   }
@@ -214,6 +216,30 @@ public class MainActivity extends Activity {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(i);
       });
+    }
+
+    /** Launches an installed app whose name best matches. Returns a short result for the AI. */
+    @JavascriptInterface public String launchApp(String name) {
+      String want = norm(name);
+      if (want.isEmpty()) return "No app name given.";
+      android.content.pm.PackageManager pm = getPackageManager();
+      Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+      List<android.content.pm.ResolveInfo> apps = pm.queryIntentActivities(q, 0);
+      android.content.pm.ResolveInfo best = null; int bestScore = 0;
+      StringBuilder names = new StringBuilder();
+      for (android.content.pm.ResolveInfo ri : apps) {
+        String label = String.valueOf(ri.loadLabel(pm));
+        if (names.length() < 600) names.append(label).append(", ");
+        String l = norm(label);
+        int score = l.equals(want) ? 3 : (l.contains(want) || want.contains(l)) ? 2 : 0;
+        if (score > bestScore) { best = ri; bestScore = score; }
+      }
+      if (best == null) return "Not installed. Installed apps: " + names;
+      final Intent launch = pm.getLaunchIntentForPackage(best.activityInfo.packageName);
+      if (launch == null) return "Cannot open " + best.loadLabel(pm);
+      launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      runOnUiThread(() -> { try { startActivity(launch); } catch (Exception e) { Log.w(TAG, "launch", e); } });
+      return "Opened " + best.loadLabel(pm);
     }
 
     /** Opens a https link in the Quest browser (used for AR mode, which needs WebXR). */

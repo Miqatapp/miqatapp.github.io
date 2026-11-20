@@ -2,7 +2,7 @@
 export const PROVIDERS = {
   openai:    { label: 'OpenAI (ChatGPT)',      model: 'gpt-4o-mini' },
   anthropic: { label: 'Anthropic (Claude)',    model: 'claude-sonnet-5-5' },
-  gemini:    { label: 'Google Gemini',         model: 'gemini-flash-latest' },
+  gemini:    { label: 'Google Gemini',         model: 'gemini-3.5-flash-lite' },
   custom:    { label: 'DeepSeek / Grok / Mistral / Groq / OpenRouter / ...', model: '' },
 };
 
@@ -299,11 +299,23 @@ export function pickModel(provider, ids, kind = 'chat') {
   return null;
 }
 
-/** Picks a Gemini Live (bidiGenerateContent) model: native-audio first, newest first. */
+// Measured Nov 2026 (Mark LVII, same kind of key): the lite models answer in ~0.6 s while
+// gemini-flash-latest / 3.6 / 3.7 often take 5 s or return 503/504, and 2.5 is gone for new keys.
+// Fastest first; a rung that fails is skipped for a while and the next one answers.
+export const GEMINI_LADDER = [
+  'gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash',
+  'gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3-flash-preview',
+  'gemini-2.5-flash-lite', 'gemini-2.5-flash',
+];
+export const LIVE_PREFERRED = ['gemini-3.1-flash-live-preview', 'gemini-2.5-flash-native-audio-preview-12-2025'];
+
+/** Picks a Gemini Live (bidiGenerateContent) model: the known-good ones first, else newest. */
 export function pickLiveModel(ids) {
   if (!ids?.length) return null;
-  const score = id => (/native-audio/.test(id) ? 2 : 0) + (/flash/.test(id) ? 1 : 0) - (/thinking|exp/.test(id) ? 1 : 0);
-  return [...ids].sort((a, b) => score(b) - score(a) || newestFirst(a, b))[0];
+  const known = LIVE_PREFERRED.find(m => ids.includes(m));
+  if (known) return known;
+  const usable = ids.filter(id => !/(transcribe|translate|robotics|thinking|exp)/.test(id));
+  return (usable.length ? usable : ids).sort(newestFirst)[0];
 }
 
 /** Fast object detection on one image. Returns [{label, box:[ymin,xmin,ymax,xmax]}]. */
@@ -315,6 +327,7 @@ Reply with JSON only: [{"label": "<short name in ${lang === 'ar' ? 'Arabic' : 'E
     contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, { text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', ...geminiThinking(model) },
   };
+  signal = signal || AbortSignal.timeout(10000);
   let r = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
   });
