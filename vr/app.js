@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.0';
+const VERSION = '5.1';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -16,7 +16,7 @@ const DEF = {
   keys: { openai: '', anthropic: '', gemini: '', custom: '' },
   customBase: 'https://openrouter.ai/api/v1',
   system: '', ttsOn: true, ttsEngine: 'auto', ttsVoice: 'nova', sttEngine: 'auto', vad: 'medium',
-  camAttach: true, camDevice: '', jarvis: true, liveModel: '', liveVoice: 'Charon', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
+  camAttach: true, camDevice: '', panelScale: 0.85, showCamInAR: false, jarvis: true, liveModel: '', liveVoice: 'Charon', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
 };
 function load() {
   try {
@@ -850,12 +850,13 @@ const tracker = new Tracker();
 // The model boxes objects on the frame it saw; the tracker then follows them live.
 function showBoxes(boxes, img, snapT) {
   const go = () => {
-    tracker.start(boxes, img);
+    if (!SPATIAL) tracker.start(boxes, img);   // headset: the marker is in the room, not on the app screen
     if (xr?.presenting()) xr.placeBoxes(boxes, snapT, img.naturalWidth, img.naturalHeight);  // pin on the real object
     if (SPATIAL) {   // native passthrough: the marker appears on the real object in the room
       window.QuestAINative.placeBoxes(JSON.stringify({
         boxes, ageMs: Math.max(0, Math.round(performance.now() - (snapT || performance.now()))),
-        fov: S.arFov, offX: S.arOffX, offY: S.arOffY, aspect: (img.naturalWidth || 4) / (img.naturalHeight || 3), dist: S.arDist || 0.9,
+        cam: camStream?.getVideoTracks()[0]?.label || '', w: img.naturalWidth || 1280, h: img.naturalHeight || 960,
+        fov: S.arFov, offX: S.arOffX, offY: S.arOffY, dist: S.arDist || 1.2,
       }));
     }
   };
@@ -1122,6 +1123,18 @@ const core = {
 };
 
 /* ================= boot ================= */
+window.questaiLog = m => log('native: ' + m);
+if (SPATIAL) {
+  // in the headset you see the room directly, so the in-app camera view is optional
+  const applyCompact = () => document.body.classList.toggle('compact', !S.showCamInAR);
+  applyCompact();
+  $('size-row').hidden = false;
+  const setScale = d => { S.panelScale = Math.max(0.4, Math.min(1.6, +(S.panelScale + d).toFixed(2))); save(); window.QuestAINative.setPanelScale(S.panelScale); };
+  $('size-down').onclick = () => setScale(-0.1);
+  $('size-up').onclick = () => setScale(+0.1);
+  $('cam-view').onclick = () => { S.showCamInAR = !S.showCamInAR; save(); applyCompact(); };
+  setTimeout(() => window.QuestAINative.setPanelScale(S.panelScale), 500);
+}
 log(`NOVA ${VERSION} ${NATIVE ? 'app' : 'web'} · ${navigator.userAgent.match(/(OculusBrowser|Quest[^;)]*|Android [\d.]+)/)?.[0] || ''}`);
 let autoStarting = false;
 bindSettings();

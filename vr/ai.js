@@ -320,10 +320,11 @@ export function pickLiveModel(ids) {
 
 /** Fast object detection on one image. Returns [{label, box:[ymin,xmin,ymax,xmax]}]. */
 export async function detectObjects({ key, model, image, question, lang, signal }) {
-  const prompt = `The user is wearing a headset and asked: "${question}".
-Find the objects in this image that the question is about. If they ask what "this"/"that" is or what is in front of them, pick the single main object near the centre of the image.
-Reply with JSON only: [{"label": "<short name in ${lang === 'ar' ? 'Arabic' : 'English'}>", "box": [ymin, xmin, ymax, xmax]}] using integers 0-1000 relative to the image.
-The box must be TIGHT: touch the object's visible edges on all four sides, no background margin. A small object (mouse, remote, phone, bottle) gets a small box. Mark only the object(s) asked about, not the surface they lie on. Reply [] if nothing visible matches.`;
+  // Gemini is trained on exactly this detection format ("box_2d", 0-1000, [ymin, xmin, ymax, xmax]).
+  const prompt = `Detect the object(s) the user is asking about: "${question}".
+If they ask what "this"/"that" is or what is in front of them, detect only the single main object closest to the centre of the image.
+Output a JSON list where each entry contains the 2D bounding box in "box_2d", a short text label in ${lang === 'ar' ? 'Arabic' : 'English'} in "label", and your best estimate of its distance from the camera in metres in "dist".
+Boxes must be tight around the object's visible pixels. Output [] if nothing matches.`;
   const body = {
     contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, { text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', ...geminiThinking(model) },
@@ -341,5 +342,6 @@ The box must be TIGHT: touch the object's visible edges on all four sides, no ba
   if (!r.ok) throw await failure(r);
   const txt = textOf('gemini', await r.json()).replace(/```(json)?/g, '').trim();
   const arr = JSON.parse(txt.slice(txt.indexOf('['), txt.lastIndexOf(']') + 1) || '[]');
-  return arr.filter(b => Array.isArray(b.box) && b.box.length === 4 && b.box.every(Number.isFinite)).slice(0, 8);
+  return arr.map(b => ({ label: b.label, box: b.box_2d || b.box, dist: Number.isFinite(+b.dist) ? +b.dist : undefined }))
+    .filter(b => Array.isArray(b.box) && b.box.length === 4 && b.box.every(Number.isFinite)).slice(0, 8);
 }

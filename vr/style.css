@@ -197,6 +197,12 @@ canvas.xr { position: fixed; inset: 0; z-index: 20; }
   .talk { width: 96px; flex: none; }
   .chip { display: none; }
 }
+/* headset: compact layout without the in-app camera view */
+.size-row { display: inline-flex; gap: 2px; }
+body.compact .stage { grid-template-columns: 1fr; }
+body.compact .viewport { display: none; }
+body.compact .side { background: var(--bg); }
+
 /* short windows (e.g. keyboard open): keep the essentials, drop decoration */
 @media (max-height: 560px) {
   .vp-empty .meter, .vp-empty span { display: none; }

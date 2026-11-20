@@ -1,6 +1,8 @@
 package io.github.miqatapp.questai
 
 import android.content.Context
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -22,6 +24,7 @@ import com.meta.spatial.toolkit.PanelRegistration
 import com.meta.spatial.toolkit.PanelStyleOptions
 import com.meta.spatial.toolkit.DpPerMeterDisplayOptions
 import com.meta.spatial.toolkit.QuadShapeOptions
+import com.meta.spatial.toolkit.Scale
 import com.meta.spatial.toolkit.Transform
 import com.meta.spatial.toolkit.UIPanelRenderOptions
 import com.meta.spatial.toolkit.UIPanelSettings
@@ -43,12 +46,14 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
   private lateinit var shell: WebShell
   private var savedState: Bundle? = null
   private var uiPlaced = false
+  private var uiEntity: Entity? = null
+  private var panelScale = 1f
 
   // head poses of the last few seconds, so a box is projected from where the head was when the
   // camera frame was taken (the answer arrives a moment later)
   private val poses = ArrayDeque<Pair<Long, Pose>>()
 
-  private data class Spec(val label: String, val index: Int, val w: Float, val h: Float)
+  private data class Spec(val label: String, val index: Int, val w: Float, val h: Float, val labelM: Float = LABEL_M)
   private val specs = HashMap<Int, Spec>()
   private val markers = mutableListOf<Pair<Entity, Long>>()
   private var nextSlot = 0
@@ -76,7 +81,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
               { _, ctx -> MarkerView(ctx, specs[id] ?: Spec("", 0, 0.2f, 0.2f)) },
               {
                 val s = specs[id] ?: Spec("", 0, 0.2f, 0.2f)
-                val h = s.h + LABEL_M
+                val h = s.h + s.labelM
                 UIPanelSettings(
                     QuadShapeOptions(s.w, h),
                     DpPerMeterDisplayOptions(900f, 1.5f),
@@ -104,7 +109,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
       uiPlaced = true
       val flat = pose.removePitchAndRoll()
       val pos = pose.t.plus(flat.forward().times(1.05f)).plus(Vector3(0f, -0.12f, 0f))
-      Entity.createPanelEntity(UI_PANEL, Transform(Pose(pos, flat.q)), Grabbable())
+      uiEntity = Entity.createPanelEntity(UI_PANEL, Transform(Pose(pos, flat.q)), Grabbable(), Scale(Vector3(panelScale, panelScale, panelScale)))
     }
     // markers fade after a while
     val it = markers.iterator()
@@ -127,39 +132,84 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     markers.clear()
   }
 
-  /** json: {boxes:[{label, box:[ymin,xmin,ymax,xmax]}], ageMs, fov, offX, offY, aspect, dist} */
+  override fun setPanelScale(scale: Float) {
+    panelScale = scale.coerceIn(0.4f, 1.6f)
+    uiEntity?.setComponent(Scale(Vector3(panelScale, panelScale, panelScale)))
+  }
+
+  /** Where a pixel of the camera image points, in "tangent" units (x right, y up) relative to the
+   *  camera's optical axis. Uses the camera's real calibration when the system provides it. */
+  private class Lens(val fx: Float, val fy: Float, val cx: Float, val cy: Float, val sw: Float, val sh: Float, val info: String) {
+    fun tan(u: Float, v: Float, w: Float, h: Float): Pair<Float, Float> {
+      // the stream is the sensor image scaled (and centre-cropped if the aspect differs)
+      val scale = max(w / sw, h / sh)
+      val xs = (u * w - w / 2f) / scale + sw / 2f
+      val ys = (v * h - h / 2f) / scale + sh / 2f
+      return (xs - cx) / fx to -(ys - cy) / fy
+    }
+  }
+
+  private fun lensFor(label: String): Lens? {
+    return try {
+      val cm = getSystemService(CameraManager::class.java)
+      val id = Regex("camera2 (\\d+)").find(label)?.groupValues?.get(1)
+          ?: cm.cameraIdList.firstOrNull { cm.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK }
+          ?: return null
+      val ch = cm.getCameraCharacteristics(id)
+      val k = ch.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION) ?: return null
+      val arr = ch.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
+          ?: ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return null
+      val rot = ch.get(CameraCharacteristics.LENS_POSE_ROTATION)?.joinToString(",") { "%.3f".format(it) }
+      val tr = ch.get(CameraCharacteristics.LENS_POSE_TRANSLATION)?.joinToString(",") { "%.3f".format(it) }
+      val sw = arr.width().toFloat(); val sh = arr.height().toFloat()
+      val hfov = 2 * atan(sw / 2 / k[0]) * 180 / PI
+      Lens(k[0], k[1], k[2], k[3], sw, sh,
+          "cam $id ${sw.toInt()}x${sh.toInt()} fx=${"%.0f".format(k[0])} cx=${"%.0f".format(k[2])} cy=${"%.0f".format(k[3])} hfov=${"%.0f".format(hfov)} rot=[$rot] t=[$tr]")
+    } catch (e: Exception) { Log.w(WebShell.TAG, "lens", e); null }
+  }
+
+  /** json: {boxes:[{label, box:[ymin,xmin,ymax,xmax], dist?}], ageMs, cam, w, h, fov, offX, offY, dist} */
   override fun placeBoxes(json: String) {
     try {
       val o = JSONObject(json)
       val boxes = o.getJSONArray("boxes")
       val head = poseAt(o.optLong("ageMs", 0))
+      val w = o.optDouble("w", 1280.0).toFloat(); val h = o.optDouble("h", 960.0).toFloat()
+      val lens = lensFor(o.optString("cam"))
       val hf = (o.optDouble("fov", 78.0) * PI / 180).toFloat()
-      val aspect = o.optDouble("aspect", 4.0 / 3.0).toFloat()
-      val vf = 2f * atan(tan(hf / 2f) / aspect)
-      val offX = (o.optDouble("offX", 0.0) * PI / 180).toFloat()
-      val offY = (o.optDouble("offY", 0.0) * PI / 180).toFloat()
-      val dist = o.optDouble("dist", 0.9).toFloat()
+      val vf = 2f * atan(tan(hf / 2f) * h / w)
+      val offX = tan((o.optDouble("offX", 0.0) * PI / 180).toFloat())
+      val offY = tan((o.optDouble("offY", 0.0) * PI / 180).toFloat())
+      val defaultDist = o.optDouble("dist", 1.2).toFloat()
+      // image point → (x, y) in tangent units
+      fun tanOf(u: Float, v: Float): Pair<Float, Float> =
+          lens?.tan(u, v, w, h) ?: (tan((u - 0.5f) * hf) to tan((0.5f - v) * vf))
       clearBoxes()
       val fwd = head.forward(); val right = head.right(); val up = head.up()
+      val report = StringBuilder(lens?.info ?: "no lens calibration, fov ${o.optDouble("fov", 78.0)}")
       for (i in 0 until min(boxes.length(), SLOTS)) {
         val b = boxes.getJSONObject(i)
         val a = b.getJSONArray("box")
         val y0 = (a.getDouble(0) / 1000).toFloat(); val x0 = (a.getDouble(1) / 1000).toFloat()
         val y1 = (a.getDouble(2) / 1000).toFloat(); val x1 = (a.getDouble(3) / 1000).toFloat()
-        val cx = (x0 + x1) / 2f; val cy = (y0 + y1) / 2f
-        val bw = kotlin.math.abs(x1 - x0); val bh = kotlin.math.abs(y1 - y0)
-        // ray from the eye through the box centre
-        val ax = tan((cx - 0.5f) * hf + offX); val ay = tan((0.5f - cy) * vf + offY)
-        val dir = fwd.plus(right.times(ax)).plus(up.times(ay)).normalize()
-        val w = max(0.04f, 2f * dist * tan(hf / 2f) * bw)
-        val h = max(0.04f, 2f * dist * tan(vf / 2f) * bh)
+        val (tx0, ty0) = tanOf(min(x0, x1), min(y0, y1))
+        val (tx1, ty1) = tanOf(max(x0, x1), max(y0, y1))
+        val tx = (tx0 + tx1) / 2f + offX; val ty = (ty0 + ty1) / 2f + offY
+        val dist = b.optDouble("dist", defaultDist.toDouble()).toFloat().coerceIn(0.3f, 6f)
+        val dir = fwd.plus(right.times(tx)).plus(up.times(ty)).normalize()
+        // size at that distance (tangent span × distance along the axis)
+        val along = dist / kotlin.math.sqrt(1f + tx * tx + ty * ty)
+        val bw = max(0.03f, kotlin.math.abs(tx1 - tx0) * along)
+        val bh = max(0.03f, kotlin.math.abs(ty0 - ty1) * along)
+        val labelM = (LABEL_M * dist / 1.2f).coerceIn(0.04f, 0.16f)
         val id = BOX_BASE + (nextSlot++ % SLOTS)
-        specs[id] = Spec(b.optString("label"), i, w, h)
-        // panel centre is above the box centre by half the label strip
-        val centre = head.t.plus(dir.times(dist)).plus(up.times(LABEL_M / 2f))
+        specs[id] = Spec(b.optString("label"), i, bw, bh, labelM)
+        val centre = head.t.plus(dir.times(dist)).plus(up.times(labelM / 2f))
         val e = Entity.createPanelEntity(id, Transform(Pose(centre, head.q)))
         markers += e to SystemClock.uptimeMillis()
+        report.append(" | ${b.optString("label")} d=${"%.1f".format(dist)} ${"%.2f".format(bw)}x${"%.2f".format(bh)}m")
       }
+      shell.js("window.questaiLog && window.questaiLog(" + JSONObject.quote("AR " + report) + ")")
     } catch (e: Exception) {
       Log.w(WebShell.TAG, "placeBoxes", e)
     }
@@ -197,7 +247,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
 
     override fun onDraw(c: Canvas) {
       val W = width.toFloat(); val H = height.toFloat()
-      val labelH = H * LABEL_M / (spec.h + LABEL_M)
+      val labelH = H * spec.labelM / (spec.h + spec.labelM)
       val r = RectF(8f, labelH + 8f, W - 8f, H - 8f)
       c.drawRect(r, fill)
       c.drawRect(r, line)
