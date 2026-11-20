@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.5';
+const VERSION = '5.6';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -749,9 +749,10 @@ function centreCrop(dataUrl, frac = 0.45, size = 512) {
 // Headset: move the room markers with the tracked objects (~10×/s), and look again if one is lost.
 let lastDetectQuestion = '';
 function followInRoom(now) {
-  if (now - (hud.lastMove || 0) < 100) return;
+  if (now - (hud.lastMove || 0) < 50) return;
   hud.lastMove = now;
-  const view = tracker.view(0.1).filter(b => !b.lost && !tracker.items.find(it => it.i === b.i)?.flat);
+  liveRedetect(now);
+  const view = tracker.view(0.05).filter(b => !b.lost);
   if (view.length) {
     window.QuestAINative.moveBoxes(JSON.stringify({ boxes: view.map(b => ({ i: b.i, box: [b.y * 1000, b.x * 1000, (b.y + b.h) * 1000, (b.x + b.w) * 1000] })) }));
   }
@@ -764,8 +765,24 @@ function followInRoom(now) {
     runDetection({ u: null, a: null }, hud.trackQ, snapshotNow());
   }
 }
+// For 15 s after an identification, look again about once a second with the fastest model and
+// re-anchor the tracker: keeps the box on things the tracker alone can't follow (plain or fast objects).
+async function liveRedetect(now) {
+  const first = tracker.items[0];
+  if (!first || hud.redetecting || detecting || now - first.born > 15000 && !first.flat || now - (hud.lastLive || 0) < 1100) return;
+  if (now - (hud.liveStart || 0) > 15000 && hud.liveStart) return;
+  hud.liveStart ||= now; hud.lastLive = now; hud.redetecting = true;
+  try {
+    const img = snapshotSmall(); if (!img) return;
+    const labels = tracker.items.map(it => it.label).join(', ');
+    const boxes = await withGemini(model => detectObjects({ key: S.keys.gemini.trim(), model, image: img, question: 'Find exactly: ' + labels, lang: S.lang }), 'gemini-3.5-flash-lite');
+    if (boxes.length) { const el = new Image(); el.src = img; await el.decode().catch(() => {}); tracker.refresh(boxes, el); }
+  } catch (e) { log('live track: ' + (e.status || e.name)); }
+  finally { hud.redetecting = false; }
+}
 async function runDetection(turn, question, snap) {
   lastDetectQuestion = question;
+  hud.liveStart = 0;
   if (!snap?.image) return [];
   turn.detected = true; detecting = true; bump();
   const t0 = performance.now();

@@ -9,6 +9,9 @@ const LOCAL_R = 22, LOCAL_STEP = 3;
 const SCALES_LOCAL = [0.93, 1, 1.075];
 const SCALES_GLOBAL = [0.8, 1, 1.25];
 const OK = 0.55, GOOD = 0.78, LOST_AFTER = 6, FORGET_MS = 9000;
+// match on the object plus a margin around it: its outline against the background is often
+// the only texture a plain object (black phone, white cup) has
+const grow = r => ({ x: r.x - r.w * 0.15, y: r.y - r.h * 0.15, w: r.w * 1.3, h: r.h * 1.3 });
 
 export class Tracker {
   constructor() {
@@ -40,18 +43,32 @@ export class Tracker {
       const r = { x: Math.min(x0, x1) * f.W, y: Math.min(y0, y1) * f.H, w: Math.max(4, Math.abs(x1 - x0) * f.W), h: Math.max(4, Math.abs(y1 - y0) * f.H) };
       const k = TPL / Math.max(r.w, r.h);
       const tw = Math.max(8, Math.round(r.w * k)), th = Math.max(8, Math.round(r.h * k));
-      const raw = sample(f, r, tw, th);
+      const raw = sample(f, grow(r), tw, th);
       // a plain surface (black door, white wall) has nothing to lock on to: show it, don't chase it
       let m = 0, v = 0; for (const x of raw) m += x; m /= raw.length; for (const x of raw) v += (x - m) * (x - m);
-      const flat = Math.sqrt(v / raw.length) < 10;
+      const flat = Math.sqrt(v / raw.length) < 6;
       return { i, label: b.label, r, r0: { ...r }, sm: { ...r }, tw, th, raw, tpl: normalize(raw), score: 1, miss: 0, lost: false, lostAt: 0, born: now, global: !flat, flat };
     });
   }
 
-  /** Track every item in the current video frame. Throttled to ~15 fps. */
+  /** A fresh detection of the same objects (in the same order): move each box there and relearn its look. */
+  refresh(boxes, img) {
+    if (!this.items.length) return;
+    const f = this.grab(img, img.naturalWidth || img.videoWidth, img.naturalHeight || img.videoHeight);
+    this.items.forEach((it, k) => {
+      const b = boxes[k]; if (!b) return;
+      const [y0, x0, y1, x1] = b.box.map(v => Math.max(0, Math.min(1000, v)) / 1000);
+      const r = { x: Math.min(x0, x1) * f.W, y: Math.min(y0, y1) * f.H, w: Math.max(4, Math.abs(x1 - x0) * f.W), h: Math.max(4, Math.abs(y1 - y0) * f.H) };
+      it.r = r; it.r0 = { ...r }; it.lost = false; it.miss = 0; it.global = false;
+      it.raw = sample(f, grow(r), it.tw, it.th); it.tpl = normalize(it.raw);
+      if (it.flat) it.born = performance.now();   // plain objects live as long as they keep being re-detected
+    });
+  }
+
+  /** Track every item in the current video frame. Throttled to ~25 fps. */
   update(video, now = performance.now()) {
     if (!this.items.length || !video.videoWidth) return;
-    if (now - this.lastUpdate < 66) return;
+    if (now - this.lastUpdate < 40) return;
     this.lastUpdate = now;
     const f = this.grab(video, video.videoWidth, video.videoHeight);
     this.frameW = f.W; this.frameH = f.H;
@@ -77,7 +94,7 @@ export class Tracker {
         it.r = best.r; it.score = best.score; it.miss = 0;
         if (it.lost) { it.lost = false; }
         if (best.score >= GOOD) { // adapt slowly to lighting / angle changes
-          const cur = sample(f, best.r, it.tw, it.th);
+          const cur = sample(f, grow(best.r), it.tw, it.th);
           for (let k = 0; k < cur.length; k++) it.raw[k] = it.raw[k] * 0.9 + cur[k] * 0.1;
           it.tpl = normalize(it.raw);
         }
@@ -122,14 +139,16 @@ function normalize(raw) {
 }
 
 // Normalized cross-correlation of the template against a candidate rectangle.
-function ncc(f, it, x, y, w, h) {
+function ncc(f, it, bx, by, bw, bh) {
   const { gray, W, H } = f, { tw, th, tpl } = it;
-  if (x < 0 || y < 0 || x + w > W || y + h > H) return -1;
+  if (bx < 0 || by < 0 || bx + bw > W || by + bh > H) return -1;
+  const g = grow({ x: bx, y: by, w: bw, h: bh });
+  const x = g.x, y = g.y, w = g.w, h = g.h;
   let s = 0, sv = 0, svv = 0;
   for (let j = 0; j < th; j++) {
-    const row = Math.floor(y + (j + 0.5) * h / th) * W;
+    const row = Math.min(H - 1, Math.max(0, Math.floor(y + (j + 0.5) * h / th))) * W;
     for (let i = 0; i < tw; i++) {
-      const v = gray[row + Math.floor(x + (i + 0.5) * w / tw)];
+      const v = gray[row + Math.min(W - 1, Math.max(0, Math.floor(x + (i + 0.5) * w / tw)))];
       const t = tpl[j * tw + i];
       s += t * v; sv += v; svv += v * v;
     }
