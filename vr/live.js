@@ -15,8 +15,8 @@ export class GeminiLive {
   /**
    * on: { inText(text), outText(text), turnDone(), interrupted(), closed(reason) }
    */
-  constructor({ key, model, system, voice = 'Charon', ctx, log = () => {}, on = {}, tools = [], tuned = true, resume = null }) {
-    Object.assign(this, { key, model, system, voice, ctx, log, on, tools, tuned, resume });
+  constructor({ key, model, system, voice = 'Charon', ctx, log = () => {}, on = {}, tools = [], tuned = true, resume = null, lang = '' }) {
+    Object.assign(this, { key, model, system, voice, ctx, log, on, tools, tuned, resume, lang });
     this.ws = null; this.ready = false;
     this.pending = new Int16Array(0);
     this.sources = new Set(); this.playEnd = 0;
@@ -51,6 +51,7 @@ export class GeminiLive {
           // decide sooner that the user has finished speaking
           setup.realtimeInputConfig = { automaticActivityDetection: { endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH', silenceDurationMs: 500, prefixPaddingMs: 150 } };
           setup.generationConfig.mediaResolution = 'MEDIA_RESOLUTION_MEDIUM';
+          if (this.lang) setup.generationConfig.speechConfig.languageCode = this.lang;   // keeps transcripts in the user's language
         }
         ws.send(JSON.stringify({ setup }));
       };

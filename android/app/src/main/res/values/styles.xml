@@ -7,4 +7,14 @@
     <item name="android:navigationBarColor">@color/bg</item>
     <item name="android:colorAccent">#D4FF3F</item>
   </style>
+  <!-- immersive headset activity: no window chrome -->
+  <style name="SpatialTheme" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+    <item name="android:windowBackground">@android:color/black</item>
+  </style>
+  <!-- object marker panels: see-through -->
+  <style name="TransparentPanel" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:colorBackground">@android:color/transparent</item>
+  </style>
 </resources>

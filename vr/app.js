@@ -3,10 +3,11 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '4.0';
+const VERSION = '5.0';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
+const SPATIAL = NATIVE && !!window.QuestAINative.isSpatial?.();   // headset app: boxes go into the room
 
 /* ================= settings ================= */
 const KEY = 'questai.settings';
@@ -166,7 +167,7 @@ function updateMsg(m) {
   bump();
 }
 function removeMsg(m) { const i = msgs.indexOf(m); if (i >= 0) msgs.splice(i, 1); m.el?.remove(); renderEmpty(); bump(); }
-function clearChat() { stopAll(); msgs.length = 0; $('log').innerHTML = ''; renderEmpty(); setStatus(''); tracker.clear(); setCaption(''); }
+function clearChat() { if (SPATIAL) window.QuestAINative.clearBoxes(); stopAll(); msgs.length = 0; $('log').innerHTML = ''; renderEmpty(); setStatus(''); tracker.clear(); setCaption(''); }
 
 function drawThumbBoxes(m) {
   if (!m.thumb || !m.boxes?.length) return;
@@ -201,15 +202,15 @@ function cool(m, e) {
   cooled.set(m, performance.now() + ms);
 }
 const retriable = e => isModelGone(e) || e?.status === 429 || e?.status >= 500 || e?.timeout || e?.name === 'TimeoutError';
-async function withGemini(fn) {
-  const start = modelFor('gemini');
+async function withGemini(fn, first) {
+  const start = first || modelFor('gemini');
   const rungs = [start, ...GEMINI_LADDER.filter(m => m !== start)];
   let last;
   for (const m of rungs) {
     if ((cooled.get(m) || 0) > performance.now()) continue;
     try {
       const out = await fn(m);
-      if (m !== start) { S.models.gemini = m; save(); syncProviderUI(); log(`gemini → ${m}`); }
+      if (m !== start && !first) { S.models.gemini = m; save(); syncProviderUI(); log(`gemini → ${m}`); }
       return out;
     } catch (e) {
       if (e?.name === 'AbortError' || !retriable(e)) throw e;
@@ -637,7 +638,7 @@ async function jarvisTool(name, args) {
     return boxes.length ? 'Marked: ' + boxes.map(b => b.label).join(', ') : 'Nothing matching was found in view.';
   }
   if (name === 'open_app') {
-    if (!NATIVE) return 'Opening apps only works in the installed Quest AI app.';
+    if (!NATIVE) return 'Opening apps only works in the installed NOVA app.';
     return window.QuestAINative.launchApp(String(args.name || ''));
   }
   if (name === 'open_website') {
@@ -657,6 +658,7 @@ async function startJarvis() {
     const model = await resolveLiveModel();
     const make = () => new GeminiLive({
       key: S.keys.gemini.trim(), model, voice: S.liveVoice, ctx, log, tools: JARVIS_TOOLS, tuned: jarvisTuned, resume: jarvisResume,
+      lang: S.lang === 'ar' ? 'ar-XA' : 'en-US',
       system: (S.system.trim() || t('sysDefault')) + '\n' + t('jarvisSys'),
       on: {
         inText: txt => {
@@ -733,7 +735,7 @@ async function runDetection(turn, question, snap) {
   const t0 = performance.now();
   let boxes = [];
   try {
-    boxes = await withModel('gemini', model => detectObjects({ key: S.keys.gemini.trim(), model, image: snap.image, question, lang: S.lang }));
+    boxes = await withGemini(model => detectObjects({ key: S.keys.gemini.trim(), model, image: snap.image, question, lang: S.lang }), 'gemini-3.5-flash');
     log(`detect "${question.slice(0, 40)}": ${boxes.length} boxes (${Math.round(performance.now() - t0)}ms)`);
     if (boxes.length) {
       const img = new Image(); img.src = snap.image;
@@ -850,6 +852,12 @@ function showBoxes(boxes, img, snapT) {
   const go = () => {
     tracker.start(boxes, img);
     if (xr?.presenting()) xr.placeBoxes(boxes, snapT, img.naturalWidth, img.naturalHeight);  // pin on the real object
+    if (SPATIAL) {   // native passthrough: the marker appears on the real object in the room
+      window.QuestAINative.placeBoxes(JSON.stringify({
+        boxes, ageMs: Math.max(0, Math.round(performance.now() - (snapT || performance.now()))),
+        fov: S.arFov, offX: S.arOffX, offY: S.arOffY, aspect: (img.naturalWidth || 4) / (img.naturalHeight || 3), dist: S.arDist || 0.9,
+      }));
+    }
   };
   img.complete ? go() : img.addEventListener('load', go, { once: true });
 }
@@ -1083,7 +1091,7 @@ function openARFromApp() {
 }
 let xr = null;
 async function setupXR() {
-  if (NATIVE) { $('enter-ar').hidden = false; $('enter-ar').onclick = openARFromApp; return; }
+  if (NATIVE) return;   // the headset app is already AR (passthrough)
   if (!navigator.xr || !window.isSecureContext) return;
   const [v, a] = await Promise.all([
     navigator.xr.isSessionSupported('immersive-vr').catch(() => false),
@@ -1114,7 +1122,7 @@ const core = {
 };
 
 /* ================= boot ================= */
-log(`Quest AI ${VERSION} ${NATIVE ? 'app' : 'web'} · ${navigator.userAgent.match(/(OculusBrowser|Quest[^;)]*|Android [\d.]+)/)?.[0] || ''}`);
+log(`NOVA ${VERSION} ${NATIVE ? 'app' : 'web'} · ${navigator.userAgent.match(/(OculusBrowser|Quest[^;)]*|Android [\d.]+)/)?.[0] || ''}`);
 let autoStarting = false;
 bindSettings();
 bindUI();

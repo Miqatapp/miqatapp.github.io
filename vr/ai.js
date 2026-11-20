@@ -322,7 +322,8 @@ export function pickLiveModel(ids) {
 export async function detectObjects({ key, model, image, question, lang, signal }) {
   const prompt = `The user is wearing a headset and asked: "${question}".
 Find the objects in this image that the question is about. If they ask what "this"/"that" is or what is in front of them, pick the single main object near the centre of the image.
-Reply with JSON only: [{"label": "<short name in ${lang === 'ar' ? 'Arabic' : 'English'}>", "box": [ymin, xmin, ymax, xmax]}] using integers 0-1000 relative to the image, boxes tight around each object. Reply [] if nothing visible matches.`;
+Reply with JSON only: [{"label": "<short name in ${lang === 'ar' ? 'Arabic' : 'English'}>", "box": [ymin, xmin, ymax, xmax]}] using integers 0-1000 relative to the image.
+The box must be TIGHT: touch the object's visible edges on all four sides, no background margin. A small object (mouse, remote, phone, bottle) gets a small box. Mark only the object(s) asked about, not the surface they lie on. Reply [] if nothing visible matches.`;
   const body = {
     contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, { text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', ...geminiThinking(model) },

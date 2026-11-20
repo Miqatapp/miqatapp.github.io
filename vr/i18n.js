@@ -1,6 +1,6 @@
 export const STR = {
   ar: {
-    title: 'Quest AI',
+    title: 'NOVA',
     noVoice: 'ما فيه صوت متاح للرد على هذا الجهاز — أضف مفتاح OpenAI أو Gemini للصوت.',
     errTimeout: 'المزوّد ما رد في الوقت. جرّب مرة ثانية أو غيّر الموديل/المزوّد.', diagnostics: 'التشخيص (صوّره لي إذا فيه مشكلة)',
     arCal: 'معايرة الواقع المعزز (AR)', arFov: 'مجال رؤية الكاميرا', arOffX: 'إزاحة أفقية', arOffY: 'إزاحة عمودية',
@@ -42,10 +42,10 @@ export const STR = {
     enterVR: 'VR', enterAR: 'AR',
     hints: 'A/X مطوّل: تكلّم · B/Y: وش هذا؟ · الزر الجانبي على اللوحة: حرّكها · ضغط العصا: توسيط',
     recenter: 'توسيط', exit: 'خروج',
-    sysDefault: 'أنت Quest AI، مساعد ذكي داخل نظارة Meta Quest. ردّ بلغة المستخدم ولهجته، بإيجاز وبأسلوب محادثة طبيعي لأن ردك يُقرأ بصوت. لا تستخدم Markdown ولا قوائم. إذا وصلتك صورة فهي من كاميرا النظارة وتمثّل اللي يشوفه المستخدم الحين.',
+    sysDefault: 'أنت نوفا (NOVA)، مساعد ذكي داخل نظارة Meta Quest. ردّ بلغة المستخدم ولهجته، بإيجاز وبأسلوب محادثة طبيعي لأن ردك يُقرأ بصوت. لا تستخدم Markdown ولا قوائم. إذا وصلتك صورة فهي من كاميرا النظارة وتمثّل اللي يشوفه المستخدم الحين.',
   },
   en: {
-    title: 'Quest AI',
+    title: 'NOVA',
     noVoice: 'No voice available on this device — add an OpenAI or Gemini key for speech.',
     errTimeout: 'The provider did not answer in time. Try again or switch model/provider.', diagnostics: 'Diagnostics',
     arCal: 'AR calibration', arFov: 'Camera field of view', arOffX: 'Horizontal offset', arOffY: 'Vertical offset',
@@ -87,7 +87,7 @@ export const STR = {
     enterVR: 'VR', enterAR: 'AR',
     hints: 'Hold A/X: talk · B/Y: what is this? · Grip on panel: move it · Stick click: recenter',
     recenter: 'Recenter', exit: 'Exit',
-    sysDefault: "You are Quest AI, an assistant inside a Meta Quest headset. Reply in the user's language and dialect, briefly and conversationally, because your reply is read aloud. No Markdown, no lists. If you receive an image, it comes from the headset camera and shows what the user is looking at right now.",
+    sysDefault: "You are NOVA, an assistant inside a Meta Quest headset. Reply in the user's language and dialect, briefly and conversationally, because your reply is read aloud. No Markdown, no lists. If you receive an image, it comes from the headset camera and shows what the user is looking at right now.",
   },
 };
 

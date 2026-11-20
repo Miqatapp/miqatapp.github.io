@@ -12,6 +12,11 @@
   <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
 
   <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:glEsVersion="0x00030001" />
+  <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" android:version="1" />
+  <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
+  <uses-feature android:name="oculus.software.handtracking" android:required="false" />
+  <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
   <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
   <queries>
@@ -20,13 +25,31 @@
   </queries>
 
   <application
-      android:label="Quest AI"
+      android:label="NOVA"
       android:icon="@mipmap/ic_launcher"
       android:allowBackup="false"
       android:supportsRtl="true"
       android:hardwareAccelerated="true"
       android:theme="@style/AppTheme">
 
+    <meta-data android:name="com.oculus.supportedDevices" android:value="quest2|questpro|quest3|quest3s" />
+
+    <!-- Headset: passthrough AR with the assistant as a floating panel -->
+    <activity
+        android:name=".SpatialActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:screenOrientation="landscape"
+        android:theme="@style/SpatialTheme"
+        android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard|navigation|uiMode|density">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.oculus.intent.category.VR" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+
+    <!-- 2D window (emulator tests, phones) -->
     <activity
         android:name=".MainActivity"
         android:exported="true"
@@ -34,13 +57,9 @@
         android:resizeableActivity="true"
         android:windowSoftInputMode="adjustResize"
         android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|uiMode">
-      <!-- default panel size on Quest -->
       <layout android:defaultWidth="1280dp" android:defaultHeight="800dp" />
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN" />
-        <category android:name="android.intent.category.LAUNCHER" />
-      </intent-filter>
     </activity>
+
     <service android:name=".ListenService" android:exported="false" android:foregroundServiceType="microphone" />
   </application>
 </manifest>

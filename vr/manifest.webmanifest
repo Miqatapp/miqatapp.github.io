@@ -1,7 +1,7 @@
 {
-  "name": "Quest AI",
-  "short_name": "Quest AI",
-  "description": "AI assistant for Meta Quest — ChatGPT, Claude, Gemini with voice and camera",
+  "name": "NOVA",
+  "short_name": "NOVA",
+  "description": "NOVA — AI assistant for Meta Quest that hears you, sees with you and marks things in your room",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
