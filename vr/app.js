@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.1';
+const VERSION = '5.2';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -619,7 +619,7 @@ async function resolveLiveModel() {
 // Tools the Live model can call (function calling).
 const JARVIS_TOOLS = [
   { name: 'mark_objects',
-    description: 'Draw a glowing labelled box on things in the headset camera view. Call it whenever the user asks what something is, where something is, or to show/find/point at/identify/count something they can see.',
+    description: 'Identify precisely and mark (glowing labelled box) things in the headset camera view using a high-resolution image. ALWAYS call this first whenever the user asks what something is, where something is, or to show/find/point at/identify/count something they can see, and then answer using the exact names it returns — the live video you see is low resolution.',
     parameters: { type: 'OBJECT', properties: { query: { type: 'STRING', description: 'What to mark, e.g. "keyboard", "the object in front of me", "all bottles".' } }, required: ['query'] } },
   { name: 'open_app',
     description: 'Open an app installed on the Meta Quest headset by its name (for example YouTube, Browser, a game).',
@@ -635,7 +635,9 @@ async function jarvisTool(name, args) {
     if (!camStream) return 'The camera is off.';
     const snap = snapshotNow();
     const boxes = await runDetection(turn, args.query || turn.u?.text || '', snap);
-    return boxes.length ? 'Marked: ' + boxes.map(b => b.label).join(', ') : 'Nothing matching was found in view.';
+    return boxes.length
+      ? `Marked and identified (higher-resolution check): ${boxes.map(b => b.label).join(', ')}. Use exactly these names in your answer.`
+      : 'Nothing matching was found in view. Ask the user to point the headset at it.';
   }
   if (name === 'open_app') {
     if (!NATIVE) return 'Opening apps only works in the installed NOVA app.';
@@ -719,15 +721,29 @@ function snapshotNow() { return camStream && !document.hidden ? { image: snapsho
 function snapshotSmall() {
   const v = camVideo; if (!v.videoWidth) return null;
   const c = snapshotSmall.c || (snapshotSmall.c = document.createElement('canvas'));
-  const sc = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
+  const sc = Math.min(1, 768 / Math.max(v.videoWidth, v.videoHeight));
   c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc);
   c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.6);
+  return c.toDataURL('image/jpeg', 0.72);
 }
 // When the question is about something visible, find it in the frame from that moment (in parallel with the spoken answer).
 async function maybeDetect(turn) {
   if (turn.detected || !turn.u?.text || !turn.snap?.image || !ASKS_ABOUT_VIEW.test(turn.u.text)) return;
   await runDetection(turn, turn.u.text, turn.snap);
+}
+// the middle of the frame (where the user is looking), enlarged, so small objects show their details
+function centreCrop(dataUrl, frac = 0.45) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth * frac, h = img.naturalHeight * frac;
+      const c = document.createElement('canvas'); c.width = 768; c.height = Math.round(768 * h / w);
+      c.getContext('2d').drawImage(img, (img.naturalWidth - w) / 2, (img.naturalHeight - h) / 2, w, h, 0, 0, c.width, c.height);
+      res(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => res(null);
+    img.src = dataUrl;
+  });
 }
 async function runDetection(turn, question, snap) {
   if (!snap?.image) return [];
@@ -735,7 +751,8 @@ async function runDetection(turn, question, snap) {
   const t0 = performance.now();
   let boxes = [];
   try {
-    boxes = await withGemini(model => detectObjects({ key: S.keys.gemini.trim(), model, image: snap.image, question, lang: S.lang }), 'gemini-3.5-flash');
+    const zoom = await centreCrop(snap.image);
+    boxes = await withGemini(model => detectObjects({ key: S.keys.gemini.trim(), model, image: snap.image, zoom, question, lang: S.lang }), 'gemini-3.5-flash');
     log(`detect "${question.slice(0, 40)}": ${boxes.length} boxes (${Math.round(performance.now() - t0)}ms)`);
     if (boxes.length) {
       const img = new Image(); img.src = snap.image;
@@ -816,11 +833,11 @@ let lastSnapT = 0;
 function snapshot() {
   const v = camVideo;
   if (!v.videoWidth) return null;
-  const sc = Math.min(1, 768 / Math.max(v.videoWidth, v.videoHeight));
+  const sc = Math.min(1, 1024 / Math.max(v.videoWidth, v.videoHeight));
   snapCanvas.width = Math.round(v.videoWidth * sc); snapCanvas.height = Math.round(v.videoHeight * sc);
   snapCanvas.getContext('2d').drawImage(v, 0, 0, snapCanvas.width, snapCanvas.height);
   lastSnapT = performance.now();
-  return snapCanvas.toDataURL('image/jpeg', 0.75);
+  return snapCanvas.toDataURL('image/jpeg', 0.82);
 }
 async function populateCams() {
   if (!navigator.mediaDevices?.enumerateDevices) return;

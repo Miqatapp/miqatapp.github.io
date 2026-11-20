@@ -319,14 +319,15 @@ export function pickLiveModel(ids) {
 }
 
 /** Fast object detection on one image. Returns [{label, box:[ymin,xmin,ymax,xmax]}]. */
-export async function detectObjects({ key, model, image, question, lang, signal }) {
+export async function detectObjects({ key, model, image, zoom, question, lang, signal }) {
   // Gemini is trained on exactly this detection format ("box_2d", 0-1000, [ymin, xmin, ymax, xmax]).
   const prompt = `Detect the object(s) the user is asking about: "${question}".
 If they ask what "this"/"that" is or what is in front of them, detect only the single main object closest to the centre of the image.
 Output a JSON list where each entry contains the 2D bounding box in "box_2d", a short text label in ${lang === 'ar' ? 'Arabic' : 'English'} in "label", and your best estimate of its distance from the camera in metres in "dist".
-Boxes must be tight around the object's visible pixels. Output [] if nothing matches.`;
+Name each object precisely and specifically, the way a person would (e.g. "computer mouse", not "controller"; "TV remote", "water bottle", "wireless keyboard"). Look carefully at shape, buttons, cable and size before naming it.
+${zoom ? 'The second image is a zoomed-in crop of the CENTRE of the first image (where the user is looking). Use it only to identify details; box_2d coordinates must always refer to the FIRST image.\n' : ''}Boxes must be tight around the object's visible pixels. Output [] if nothing matches.`;
   const body = {
-    contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, { text: prompt }] }],
+    contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, ...(zoom ? [{ inline_data: { mime_type: 'image/jpeg', data: b64(zoom) } }] : []), { text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', ...geminiThinking(model) },
   };
   signal = signal || AbortSignal.timeout(10000);
