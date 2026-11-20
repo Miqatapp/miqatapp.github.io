@@ -1,0 +1,87 @@
+--------- beginning of system
+11-20 15:06:31.460   548  3421 W ActivityTaskManager: Can't find TaskDisplayArea to determine support for multi window. Task id=11 attached=false
+11-20 15:06:32.038   548  1092 W ActivityManager: Slow operation: 183ms so far, now at startProcess: done creating new process record
+11-20 15:06:32.038   548  1092 W ActivityManager: Slow operation: 183ms so far, now at startProcess: stepping in to startProcess
+11-20 15:06:32.038   548  1092 W ActivityManager: Slow operation: 183ms so far, now at startProcess: done starting proc!
+11-20 15:06:32.214   548  1710 W ActivityManager: Slow operation: 98ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+11-20 15:06:32.498   548   895 W ActivityManager: Slow operation: 168ms so far, now at attachApplicationLocked: immediately before bindApplication
+11-20 15:06:32.498   548   895 W ActivityManager: Slow operation: 168ms so far, now at attachApplicationLocked: immediately after bindApplication
+11-20 15:06:32.498   548   895 W ActivityManager: Slow operation: 168ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+11-20 15:06:32.498   548   895 W ActivityManager: Slow operation: 168ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+11-20 15:06:32.511   548   895 W ActivityManager: Slow operation: 181ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+--------- beginning of main
+11-20 15:06:32.838  5062  5109 E chromium: [ERROR:variations_seed_loader.cc(69)] Failed to open file for reading. Errno: 2
+11-20 15:06:32.839  5062  5109 E chromium: [ERROR:variations_seed_loader.cc(69)] Failed to open file for reading. Errno: 2
+11-20 15:06:32.937   548   592 W ActivityManager: Slow operation: 76ms so far, now at startProcess: returned from zygote!
+11-20 15:06:32.937   548   592 W ActivityManager: Slow operation: 76ms so far, now at startProcess: done updating battery stats
+11-20 15:06:32.937   548   592 W ActivityManager: Slow operation: 76ms so far, now at startProcess: building log message
+11-20 15:06:32.937   548   592 W ActivityManager: Slow operation: 76ms so far, now at startProcess: starting to update pids map
+11-20 15:06:32.938   548   592 W ActivityManager: Slow operation: 76ms so far, now at startProcess: done updating pids map
+11-20 15:06:33.159  5062  5121 E chromium: [ERROR:simple_file_enumerator.cc(43)] readdir /data/user/0/io.github.miqatapp.questai/cache/WebView/Default/HTTP Cache/Code Cache/wasm: No such file or directory (2)
+11-20 15:06:33.159  5062  5121 E chromium: [ERROR:simple_index_file.cc(614)] Could not reconstruct index from disk
+11-20 15:06:33.940   548   548 W ActivityManager: Unable to start service Intent { act=android.service.contentcapture.ContentCaptureService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiContentCaptureService } U=0: not found
+11-20 15:06:34.674  5062  5062 I QuestAI : LOG [diag] NOVA 5.8 app · Android 12 @https://appassets.androidplatform.net/assets/www/app.js:83
+11-20 15:06:39.805   548  1092 W ActivityManager: Slow operation: 61ms so far, now at attachApplicationLocked: immediately before bindApplication
+11-20 15:06:39.824   548  1092 W ActivityManager: Slow operation: 81ms so far, now at attachApplicationLocked: immediately after bindApplication
+11-20 15:06:39.824   548  1092 W ActivityManager: Slow operation: 81ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+11-20 15:06:39.824   548  1092 W ActivityManager: Slow operation: 81ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+11-20 15:06:39.829   548  1092 W ActivityManager: Slow operation: 86ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+11-20 15:06:51.623   548  2298 W ActivityManager: Background start not allowed: service Intent { cmp=com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService } to com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService from pid=5248 uid=10101 pkg=com.google.android.apps.messaging startFg?=false
+11-20 15:06:55.655   548  1083 W ActivityManager: Background start not allowed: service Intent { cmp=com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService } to com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService from pid=5248 uid=10101 pkg=com.google.android.apps.messaging startFg?=false
+11-20 15:06:55.661   548  1083 W ActivityManager: Background start not allowed: service Intent { cmp=com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService } to com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService from pid=5248 uid=10101 pkg=com.google.android.apps.messaging startFg?=false
+11-20 15:06:55.914   548   973 W ActivityManager: Background start not allowed: service Intent { cmp=com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService } to com.google.android.apps.messaging/.shared.datamodel.action.execution.ActionExecutorImpl$EmptyService from pid=5248 uid=10101 pkg=com.google.android.apps.messaging startFg?=false
+11-20 15:06:56.131   548  2449 W ActivityManager: Exception when unbinding service com.android.chrome/org.chromium.chrome.browser.customtabs.CustomTabsConnectionService
+11-20 15:06:56.131   548  2449 W ActivityManager: android.os.DeadObjectException
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at android.os.BinderProxy.transactNative(Native Method)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at android.os.BinderProxy.transact(BinderProxy.java:571)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at android.app.IApplicationThread$Stub$Proxy.scheduleUnbindService(IApplicationThread.java:1797)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at com.android.server.am.ActiveServices.removeConnectionLocked(ActiveServices.java:4462)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at com.android.server.am.ActiveServices.unbindServiceLocked(ActiveServices.java:2998)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at com.android.server.am.ActivityManagerService.unbindService(ActivityManagerService.java:12134)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2654)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2517)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at android.os.Binder.execTransactInternal(Binder.java:1179)
+11-20 15:06:56.131   548  2449 W ActivityManager: 	at android.os.Binder.execTransact(Binder.java:1143)
+11-20 15:07:07.102   548  2043 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:07.103   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@5094355
+11-20 15:07:07.103   548  2043 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:07.103   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@cf3d65b
+11-20 15:07:07.264   548  2726 W ActivityManager: Receiver with filter android.content.IntentFilter@4842ef8 already registered for pid 1046, callerPackage is com.google.android.apps.nexuslauncher
+11-20 15:07:08.499   548   652 W ActivityManager: Unable to start service Intent { act=com.google.android.gms.drive.ApiService.RESET_AFTER_BOOT flg=0x4 cmp=com.google.android.gms/.drive.api.ApiService (has extras) } U=0: not found
+11-20 15:07:08.513   548   833 W ActivityManager: Unable to start service Intent { act=android.service.search.SearchUiService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSearchUiService } U=0: not found
+11-20 15:07:08.514   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@81533c4
+11-20 15:07:11.084   548   833 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:11.085   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@3e84b51
+11-20 15:07:11.085   548   833 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:11.085   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@8154b8d
+11-20 15:07:11.086   548   973 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:11.086   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@aaa3f8e
+11-20 15:07:11.094   548   973 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:11.094   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@1bd31fd
+11-20 15:07:11.100   548   973 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:11.101   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@6a1c943
+11-20 15:07:11.949   548   833 W ActivityManager: Unable to start service Intent { act=android.service.search.SearchUiService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSearchUiService } U=0: not found
+11-20 15:07:11.951   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@2211dbb
+11-20 15:07:11.957   548   833 W ActivityManager: Unable to start service Intent { act=android.service.search.SearchUiService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSearchUiService } U=0: not found
+11-20 15:07:11.972   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@5a9c631
+11-20 15:07:13.180   548   833 W ActivityManager: Scheduling restart of crashed service com.google.android.webview/org.chromium.android_webview.services.MetricsBridgeService in 1000ms for connection
+11-20 15:07:17.183   548  1092 W ActivityManager: Unable to start service Intent { act=android.service.smartspace.SmartspaceService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiSmartspaceService } U=0: not found
+11-20 15:07:17.190   548   548 W ActivityManager: Unbind failed: could not find connection for android.app.LoadedApk$ServiceDispatcher$InnerConnection@ea9b9cc
+11-20 15:07:25.790  5062  5062 I QuestAI : WARNING The ScriptProcessorNode is deprecated. Use AudioWorkletNode instead. (https://bit.ly/audio-worklet) @https://appassets.androidplatform.net/assets/www/app.js:370
+11-20 15:07:25.792  5062  5062 I QuestAI : LOG [diag] listening on @https://appassets.androidplatform.net/assets/www/app.js:83
+11-20 15:07:26.998   548  1083 W ActivityTaskManager: Tried to set launchTime (0) < mLastActivityLaunchTime (144298)
+11-20 15:07:27.197  5062  5062 I QuestAI : LOG [diag] jarvis failed: API key not valid. Please pass a valid API key. @https://appassets.androidplatform.net/assets/www/app.js:83
+11-20 15:07:34.490  1868  6167 E chromium: [ERROR:variations_seed_loader.cc(69)] Failed to open file for reading. Errno: 2
+11-20 15:07:34.491  1868  6167 E chromium: [ERROR:variations_seed_loader.cc(69)] Failed to open file for reading. Errno: 2
+11-20 15:07:34.668   548   592 W ActivityManager: Slow operation: 143ms so far, now at startProcess: returned from zygote!
+11-20 15:07:34.680   548   592 W ActivityManager: Slow operation: 155ms so far, now at startProcess: done updating battery stats
+11-20 15:07:34.680   548   592 W ActivityManager: Slow operation: 155ms so far, now at startProcess: building log message
+11-20 15:07:34.680   548   592 W ActivityManager: Slow operation: 155ms so far, now at startProcess: starting to update pids map
+11-20 15:07:34.680   548   592 W ActivityManager: Slow operation: 155ms so far, now at startProcess: done updating pids map
+11-20 15:07:43.686  5062  5062 I QuestAI : LOG [diag] camera on (camera2 0, facing back) @https://appassets.androidplatform.net/assets/www/app.js:83
+11-20 15:07:48.332   548  1647 W ActivityManager: Slow operation: 59ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+11-20 15:07:53.273   548   592 W ActivityManager: Slow operation: 128ms so far, now at startProcess: returned from zygote!
+11-20 15:07:53.284   548   592 W ActivityManager: Slow operation: 139ms so far, now at startProcess: done updating battery stats
+11-20 15:07:53.284   548   592 W ActivityManager: Slow operation: 139ms so far, now at startProcess: building log message
+11-20 15:07:53.284   548   592 W ActivityManager: Slow operation: 139ms so far, now at startProcess: starting to update pids map
+11-20 15:07:53.284   548   592 W ActivityManager: Slow operation: 139ms so far, now at startProcess: done updating pids map

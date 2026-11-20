@@ -1,0 +1,5 @@
+Current WebView Update Service state
+  Current WebView package (name, version): (com.google.android.webview, 120.0.6099.193)
+  WebView package dirty: false
+  Any WebView package installed: true
+  Preferred WebView package (name, version): (com.google.android.webview, 120.0.6099.193)

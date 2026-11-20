@@ -1,0 +1,19 @@
+    requested permissions:
+      android.permission.INTERNET
+      android.permission.RECORD_AUDIO
+      android.permission.MODIFY_AUDIO_SETTINGS
+      android.permission.CAMERA
+      android.permission.FOREGROUND_SERVICE
+      android.permission.FOREGROUND_SERVICE_MICROPHONE
+      android.permission.POST_NOTIFICATIONS
+      horizonos.permission.HEADSET_CAMERA
+      com.oculus.permission.HAND_TRACKING
+    install permissions:
+      android.permission.MODIFY_AUDIO_SETTINGS: granted=true
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.INTERNET: granted=true
+      runtime permissions:
+        android.permission.CAMERA: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.RECORD_AUDIO: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+      com.google.android.permissioncontroller:
+    seq=0, package=com.google.android.permissioncontroller

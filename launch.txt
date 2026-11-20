@@ -1,0 +1,7 @@
+Starting: Intent { cmp=io.github.miqatapp.questai/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: io.github.miqatapp.questai/.MainActivity
+TotalTime: 2702
+WaitTime: 2730
+Complete
