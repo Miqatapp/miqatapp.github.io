@@ -1,4 +1,4 @@
-const CACHE = 'questai-v13';
+const CACHE = 'questai-v14';
 const SHELL = ['./', './app.js', './ai.js', './i18n.js', './xr.js', './tracker.js', './live.js', './style.css', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './fonts/plex-ar-arabic-400.woff2', './fonts/plex-ar-arabic-500.woff2', './fonts/plex-ar-arabic-600.woff2', './fonts/plex-ar-arabic-700.woff2',
   './fonts/plex-ar-latin-400.woff2', './fonts/plex-ar-latin-500.woff2', './fonts/plex-ar-latin-600.woff2', './fonts/plex-ar-latin-700.woff2',

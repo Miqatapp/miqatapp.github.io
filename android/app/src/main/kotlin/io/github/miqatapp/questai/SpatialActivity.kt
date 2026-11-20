@@ -15,10 +15,14 @@ import android.util.Log
 import android.view.View
 import com.meta.spatial.core.Entity
 import com.meta.spatial.core.Pose
+import com.meta.spatial.core.Query
 import com.meta.spatial.core.SpatialFeature
 import com.meta.spatial.core.Vector3
 import com.meta.spatial.runtime.ReferenceSpace
 import com.meta.spatial.toolkit.AppSystemActivity
+import com.meta.spatial.toolkit.AvatarBody
+import com.meta.spatial.toolkit.Controller
+import com.meta.spatial.toolkit.ControllerType
 import com.meta.spatial.toolkit.Grabbable
 import com.meta.spatial.toolkit.PanelRegistration
 import com.meta.spatial.toolkit.PanelStyleOptions
@@ -113,6 +117,8 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     val now = SystemClock.uptimeMillis()
     poses.addLast(now to pose)
     while (poses.isNotEmpty() && now - poses.first().first > 5000) poses.removeFirst()
+    handHist.addLast(Triple(now, handPose(0), handPose(1)))
+    while (handHist.isNotEmpty() && now - handHist.first().first > 5000) handHist.removeFirst()
     // place the assistant panel in front of the user once tracking has a real head pose
     if (!uiPlaced && (pose.t.x != 0f || pose.t.y != 0f || pose.t.z != 0f)) {
       uiPlaced = true
@@ -125,10 +131,17 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     val dt = ((now - lastTick).coerceIn(1L, 100L)) / 1000f
     lastTick = now
     val a = 1f - kotlin.math.exp(-dt * 16f)
+    val head = pose
     for (m in live.values) {
+      val anchor = m.anchor
+      if (anchor != null) {
+        val hp = handPose(anchor.first)
+        if (hp != null) { m.target = hp.times(anchor.second).t; m.facing = head; m.handSeen = now }
+      }
       val tgt = m.target ?: continue
-      m.pos = m.pos.times(1f - a).plus(tgt.times(a))
-      m.sx += (m.tsx - m.sx) * a; m.sy += (m.tsy - m.sy) * a
+      val k = if (anchor != null) 1f - kotlin.math.exp(-dt * 40f) else a
+      m.pos = m.pos.times(1f - k).plus(tgt.times(k))
+      m.sx += (m.tsx - m.sx) * k; m.sy += (m.tsy - m.sy) * k
       m.entity.setComponent(Transform(Pose(m.pos, m.facing.q)))
       m.entity.setComponent(Scale(Vector3(m.sx, m.sy, 1f)))
     }
@@ -210,10 +223,47 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
 
   /** How camera-image boxes map to the room for the current stream (kept so tracked boxes can move). */
   private class Frame(val lens: Lens?, val w: Float, val h: Float, val hf: Float, val vf: Float, val offX: Float, val offY: Float)
-  private class Marker(val entity: Entity, val born: Long, val dist: Float, val bw0: Float, val bh0: Float, val labelM: Float,
+  private class Marker(val entity: Entity, val born: Long, var dist: Float, val bw0: Float, val bh0: Float, val labelM: Float,
                        var pos: Vector3, var facing: Pose) {
     var target: Vector3? = null
     var sx = 1f; var sy = 1f; var tsx = 1f; var tsy = 1f
+    /** Held in a hand: (0 left / 1 right, marker pose in that hand's frame). Follows the hand every frame. */
+    var anchor: Pair<Int, Pose>? = null
+    var handSeen = 0L
+    var disagreeSince = 0L
+  }
+
+  // ---- hands (Quest hand tracking): a held object moves exactly with the hand holding it ----
+  private var handEntities: List<Entity>? = null
+  private fun handPose(side: Int): Pose? = try {
+    val hands = handEntities ?: Query.where { has(AvatarBody.id) }.eval()
+        .map { it.getComponent<AvatarBody>() }.firstOrNull { it.isPlayerControlled }
+        ?.let { listOf(it.leftHand, it.rightHand) }?.also { handEntities = it }
+    val h = hands?.getOrNull(side)
+    val c = h?.tryGetComponent<Controller>()
+    if (h == null || c == null || !c.isActive || c.type != ControllerType.HAND) null
+    else h.getComponent<Transform>().transform.takeIf { it.t.x != 0f || it.t.y != 0f || it.t.z != 0f }
+  } catch (e: Exception) { null }
+
+  // where the hands were over the last seconds: the answer arrives after the frame was taken,
+  // so a held object is matched with (and offset from) the hand as it was in that frame
+  private val handHist = ArrayDeque<Triple<Long, Pose?, Pose?>>()
+  private fun handAt(side: Int, ageMs: Long): Pose? {
+    val t = SystemClock.uptimeMillis() - ageMs
+    val e = handHist.minByOrNull { kotlin.math.abs(it.first - t) } ?: return handPose(side)
+    return if (side == 0) e.second else e.third
+  }
+
+  /** The tracked hand nearest the ray from the eyes through the object: (side, depth along the ray, distance from ray). */
+  private fun handOnRay(origin: Vector3, dir: Vector3, ageMs: Long): Triple<Int, Float, Float>? {
+    var best: Triple<Int, Float, Float>? = null
+    for (side in 0..1) {
+      val hp = handAt(side, ageMs) ?: continue
+      val v = hp.t.minus(origin); val along = v.dot(dir)
+      val perp = v.minus(dir.times(along)).length()
+      if (along > 0.15f && along < 1.0f && perp < 0.16f && (best == null || perp < best.third)) best = Triple(side, along, perp)
+    }
+    return best
   }
   private var lastTick = 0L
   private var frame: Frame? = null
@@ -253,23 +303,36 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     try {
       val o = JSONObject(json)
       val boxes = o.getJSONArray("boxes")
-      val head = poseAt(o.optLong("ageMs", 0))
+      val age = o.optLong("ageMs", 0)
+      val head = poseAt(age)
       val f = frameFrom(o).also { frame = it }
       val defaultDist = o.optDouble("dist", 1.2).toFloat()
       clearBoxes()
       val report = StringBuilder(f.lens?.info ?: "no lens calibration, fov ${o.optDouble("fov", 78.0)}")
       for (i in 0 until min(boxes.length(), SLOTS)) {
         val b = boxes.getJSONObject(i)
-        val dist = b.optDouble("dist", defaultDist.toDouble()).toFloat().coerceIn(0.3f, 6f)
-        val labelM = (LABEL_M * dist / 1.2f).coerceIn(0.04f, 0.16f)
-        val (centre, bw, bh) = aim(f, b.getJSONArray("box"), dist, head, labelM)
+        var dist = b.optDouble("dist", defaultDist.toDouble()).toFloat().coerceIn(0.3f, 6f)
+        var labelM = (LABEL_M * dist / 1.2f).coerceIn(0.04f, 0.16f)
+        var (centre, bw, bh) = aim(f, b.getJSONArray("box"), dist, head, labelM)
+        // is it in a hand? then it is as far away as that hand, and it moves with it
+        val dir = centre.minus(head.t).normalize()
+        val held = handOnRay(head.t, dir, age)
+        if (held != null) {
+          dist = held.second.coerceIn(0.2f, 1.0f)
+          labelM = (LABEL_M * dist / 1.2f).coerceIn(0.04f, 0.16f)
+          val again = aim(f, b.getJSONArray("box"), dist, head, labelM)
+          centre = again.first; bw = again.second; bh = again.third
+        }
         val id = BOX_BASE + (nextSlot++ % SLOTS)
         specs[id] = Spec(b.optString("label"), i, bw, bh, labelM)
         val e = Entity.createPanelEntity(id, Transform(Pose(centre, head.q)))
         val now = SystemClock.uptimeMillis()
         markers += e to now
-        live[i] = Marker(e, now, dist, bw, bh, labelM, centre, head)
-        report.append(" | ${b.optString("label")} d=${"%.1f".format(dist)} ${"%.2f".format(bw)}x${"%.2f".format(bh)}m")
+        val m = Marker(e, now, dist, bw, bh, labelM, centre, head)
+        if (held != null) handAt(held.first, age)?.let { hp -> m.anchor = held.first to hp.inverse().times(Pose(centre, head.q)); m.handSeen = now }
+        live[i] = m
+        report.append(" | ${b.optString("label")} d=${"%.2f".format(dist)} ${"%.2f".format(bw)}x${"%.2f".format(bh)}m" +
+            (if (held != null) " in ${if (held.first == 0) "left" else "right"} hand (${"%.0f".format(held.third * 100)}cm off ray)" else " hands: ${listOf(0, 1).count { handAt(it, age) != null }}"))
       }
       shell.js("window.questaiLog && window.questaiLog(" + JSONObject.quote("AR " + report) + ")")
     } catch (e: Exception) {
@@ -287,6 +350,15 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
         val b = boxes.getJSONObject(k)
         val m = live[b.getInt("i")] ?: continue
         val (centre, bw, bh) = aim(f, b.getJSONArray("box"), m.dist, head, m.labelM)
+        if (m.anchor != null) {
+          val now = SystemClock.uptimeMillis()
+          val seen = centre.minus(head.t).normalize(); val held = m.pos.minus(head.t).normalize()
+          if (seen.dot(held) < 0.985f) {          // > ~10° apart: the camera sees it elsewhere
+            if (m.disagreeSince == 0L) m.disagreeSince = now
+            if (now - m.disagreeSince < 1200) continue
+            m.anchor = null; m.dist = m.pos.minus(head.t).length().coerceIn(0.3f, 6f)   // let go: follow the camera again
+          } else { m.disagreeSince = 0L; continue }
+        }
         // onSceneTick glides there; jumping straight to each update is what made it look jerky
         m.target = centre; m.facing = head
         m.tsx = bw / m.bw0; m.tsy = (bh + m.labelM) / (m.bh0 + m.labelM)
