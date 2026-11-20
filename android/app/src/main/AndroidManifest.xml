@@ -49,15 +49,20 @@
       </intent-filter>
     </activity>
 
-    <!-- 2D window (emulator tests, phones) -->
+    <!-- 2D window: fallback icon "NOVA 2D" (also used by the emulator tests) -->
     <activity
         android:name=".MainActivity"
+        android:label="NOVA 2D"
         android:exported="true"
         android:launchMode="singleTask"
         android:resizeableActivity="true"
         android:windowSoftInputMode="adjustResize"
         android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|uiMode">
       <layout android:defaultWidth="1280dp" android:defaultHeight="800dp" />
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
     </activity>
 
     <service android:name=".ListenService" android:exported="false" android:foregroundServiceType="microphone" />
