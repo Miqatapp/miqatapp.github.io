@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.6';
+const VERSION = '5.7';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -199,16 +199,17 @@ async function resolveModel(p, kind = 'chat') {
 // is set aside for a while and the next one answers straight away.
 const cooled = new Map();
 function cool(m, e) {
-  const ms = isModelGone(e) ? 6 * 3600e3 : e?.status === 429 ? 300e3 : 120e3;
+  const ms = isModelGone(e) ? 6 * 3600e3 : e?.status === 429 ? 60e3 : 120e3;
   cooled.set(m, performance.now() + ms);
 }
 const retriable = e => isModelGone(e) || e?.status === 429 || e?.status >= 500 || e?.timeout || e?.name === 'TimeoutError';
 async function withGemini(fn, first) {
   const start = first || modelFor('gemini');
   const rungs = [start, ...GEMINI_LADDER.filter(m => m !== start)];
-  let last;
+  let last, tried = false;
   for (const m of rungs) {
     if ((cooled.get(m) || 0) > performance.now()) continue;
+    tried = true;
     try {
       const out = await fn(m);
       if (m !== start && !first) { S.models.gemini = m; save(); syncProviderUI(); log(`gemini → ${m}`); }
@@ -219,6 +220,8 @@ async function withGemini(fn, first) {
       cool(m, e); last = e;
     }
   }
+  // every rung is resting → still ask the first one instead of failing without a request
+  if (!tried) return fn(start);
   throw last || new Error('no Gemini model answered');
 }
 async function withModel(p, fn, kind = 'chat') {
@@ -636,9 +639,9 @@ async function jarvisTool(name, args) {
     if (!camStream) return 'The camera is off.';
     const snap = snapshotNow();
     const boxes = await runDetection(turn, args.query || turn.u?.text || '', snap);
-    return boxes.length
-      ? `Marked and identified (higher-resolution check): ${boxes.map(b => b.label).join(', ')}. Use exactly these names in your answer.`
-      : 'Nothing matching was found in view. Ask the user to point the headset at it.';
+    if (boxes.length) return `Marked and identified (higher-resolution check): ${boxes.map(b => b.label).join(', ')}. Use exactly these names in your answer.`;
+    if (detectErr) return `The marking service failed: ${friendlyError(detectErr)} Tell the user exactly this reason in one short sentence; do not guess.`;
+    return 'Nothing matching was found in view. Ask the user to point the headset at it.';
   }
   if (name === 'open_app') {
     if (!NATIVE) return 'Opening apps only works in the installed NOVA app.';
@@ -756,33 +759,30 @@ function followInRoom(now) {
   if (view.length) {
     window.QuestAINative.moveBoxes(JSON.stringify({ boxes: view.map(b => ({ i: b.i, box: [b.y * 1000, b.x * 1000, (b.y + b.h) * 1000, (b.x + b.w) * 1000] })) }));
   }
-  const lost = tracker.items.some(it => it.lost);
-  if (!lost) { hud.lostSince = 0; return; }
-  hud.lostSince ||= now;
-  // lost for a second → ask the model to find it again (at most every 4 s, for 40 s)
-  if (now - hud.lostSince > 1000 && now - (hud.lastRedetect || 0) > 4000 && now - (tracker.items[0]?.born || now) < 40000 && hud.trackQ && !detecting) {
-    hud.lastRedetect = now;
-    runDetection({ u: null, a: null }, hud.trackQ, snapshotNow());
-  }
 }
-// For 15 s after an identification, look again about once a second with the fastest model and
-// re-anchor the tracker: keeps the box on things the tracker alone can't follow (plain or fast objects).
+// Re-find an object the on-device tracker lost (or a plain one it can't follow) with ONE light
+// request every 3 s for 30 s. Never faster: the free Gemini key allows only a few requests a
+// minute, and burning them here is what made the main "what is this" detection fail in 5.6.
 async function liveRedetect(now) {
-  const first = tracker.items[0];
-  if (!first || hud.redetecting || detecting || now - first.born > 15000 && !first.flat || now - (hud.lastLive || 0) < 1100) return;
-  if (now - (hud.liveStart || 0) > 15000 && hud.liveStart) return;
-  hud.liveStart ||= now; hud.lastLive = now; hud.redetecting = true;
+  const items = tracker.items;
+  if (!items.length || hud.redetecting || detecting || !hud.trackQ) return;
+  if (!items.some(it => it.lost || it.flat)) { hud.lostSince = 0; return; }
+  hud.lostSince ||= now;
+  if (now - hud.lostSince < 800 || now - (hud.lastLive || 0) < 3000 || now - (hud.trackStart || 0) > 30000 || now < (hud.quotaUntil || 0)) return;
+  hud.lastLive = now; hud.redetecting = true;
   try {
     const img = snapshotSmall(); if (!img) return;
-    const labels = tracker.items.map(it => it.label).join(', ');
-    const boxes = await withGemini(model => detectObjects({ key: S.keys.gemini.trim(), model, image: img, question: 'Find exactly: ' + labels, lang: S.lang }), 'gemini-3.5-flash-lite');
+    const labels = items.map(it => it.label).join(', ');
+    const boxes = await detectObjects({ key: S.keys.gemini.trim(), model: 'gemini-3.5-flash-lite', image: img, question: 'Find exactly, in this order: ' + labels, lang: S.lang });
     if (boxes.length) { const el = new Image(); el.src = img; await el.decode().catch(() => {}); tracker.refresh(boxes, el); }
-  } catch (e) { log('live track: ' + (e.status || e.name)); }
-  finally { hud.redetecting = false; }
+  } catch (e) {
+    if (e?.status === 429) hud.quotaUntil = now + 60000;   // leave the quota to real questions
+    log('re-find: ' + (e.status || e.name));
+  } finally { hud.redetecting = false; }
 }
+let detectErr = null;
 async function runDetection(turn, question, snap) {
-  lastDetectQuestion = question;
-  hud.liveStart = 0;
+  lastDetectQuestion = question; detectErr = null;
   if (!snap?.image) return [];
   turn.detected = true; detecting = true; bump();
   const t0 = performance.now();
@@ -802,7 +802,11 @@ async function runDetection(turn, question, snap) {
       if (holder) { holder.boxes = boxes; drawThumbBoxes(holder); }
       showBoxes(boxes, img, snap.t);
     }
-  } catch (e) { log(`detect error: ${e.status || ''} ${String(e.message).slice(0, 120)}`); }
+  } catch (e) {
+    detectErr = e;
+    log(`detect error: ${e.status || ''} ${String(e.message).slice(0, 120)}`);
+    setStatus(friendlyError(e), true);
+  }
   detecting = false; bump();
   return boxes;
 }
@@ -905,7 +909,7 @@ const tracker = new Tracker();
 function showBoxes(boxes, img, snapT) {
   const go = () => {
     tracker.start(boxes, img);   // headset: tracked in the background and the room marker follows it
-    hud.trackQ = lastDetectQuestion; hud.lostSince = 0;
+    hud.trackQ = lastDetectQuestion; hud.lostSince = 0; hud.trackStart = performance.now();
     if (xr?.presenting()) xr.placeBoxes(boxes, snapT, img.naturalWidth, img.naturalHeight);  // pin on the real object
     if (SPATIAL) {   // native passthrough: the marker appears on the real object in the room
       window.QuestAINative.placeBoxes(JSON.stringify({
