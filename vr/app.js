@@ -1,4 +1,5 @@
-import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pickModel, isModelGone } from './ai.js';
+import { PROVIDERS, chat, listModels, transcribe, openaiSpeech, geminiSpeech, pickModel, isModelGone, pickLiveModel, detectObjects } from './ai.js';
+import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
@@ -14,7 +15,7 @@ const DEF = {
   keys: { openai: '', anthropic: '', gemini: '', custom: '' },
   customBase: 'https://openrouter.ai/api/v1',
   system: '', ttsOn: true, ttsEngine: 'auto', ttsVoice: 'nova', sttEngine: 'auto', vad: 'medium',
-  camAttach: true, camDevice: '', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
+  camAttach: true, camDevice: '', jarvis: true, liveModel: '', liveVoice: 'Kore', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
 };
 function load() {
   try {
@@ -56,6 +57,13 @@ function setStatus(s, err = false) {
   bump();
 }
 function orbState() {
+  if (jarvis?.ready) {
+    if (jarvis.playing) return 'speaking';
+    if (detecting) return 'looking';
+    if (performance.now() - jarvis.lastIn < 900) return 'hearing';
+    if (jarvis.waiting) return 'thinking';
+    return 'listening';
+  }
   if (rec) return 'hearing';
   if (busy && looking) return 'looking';
   if (busy || transcribing) return 'thinking';
@@ -352,11 +360,16 @@ function onAudio(c) {
   let sum = 0; for (let i = 0; i < c.length; i++) sum += c[i] * c[i];
   const rms = Math.sqrt(sum / c.length);
   inLevel = inLevel * 0.6 + Math.min(1, rms * 12) * 0.4;
+  if (jarvis?.ready && live) { jarvis.sendAudio(c, pipe.rate, rms); return; }
   if (rec) {
     rec.chunks.push(c); rec.len += c.length;
     if (rec.live) {
-      rec.silence = rms < rec.thr * 0.6 ? rec.silence + c.length : 0;
-      if (rec.silence > pipe.rate * 0.85) { finishRecording(); return; }
+      // end of speech: clearly quieter than the speech itself, even with a fan/AC in the room
+      rec.peak = Math.max(rec.peak || 0, rms);
+      const quiet = Math.max(rec.thr * 0.6, vad.noise * 1.8, rec.peak * 0.18);
+      rec.silence = rms < quiet ? rec.silence + c.length : 0;
+      if (rec.silence > pipe.rate * 0.7) { finishRecording(); return; }
+      if (rec.len > pipe.rate * 12) { finishRecording(); return; }
     }
     if (rec.len > pipe.rate * 30) finishRecording();
     return;
@@ -446,13 +459,15 @@ function encodeWav(chunks, len, inRate, outRate) {
 }
 async function setLive(on, { quiet = false } = {}) {
   if (on) {
-    if (!sttReady()) { if (!quiet) setStatus(t('needSttKey'), true); return; }
+    if (!sttReady() && !jarvisWanted()) { if (!quiet) setStatus(t('needSttKey'), true); return; }
     if (!(await openPipeOrExplain(() => setLive(true)))) return;
     live = true; vad.pre = []; vad.run = 0;
     log('listening on');
     setStatus('');
+    if (jarvisWanted()) startJarvis();
   } else {
     live = false;
+    stopJarvis();
     if (rec?.live) { rec = null; setMicUI(false); }
     closePipeIfIdle();
   }
@@ -547,12 +562,102 @@ function stopSpeaking() {
 }
 const levelBuf = new Uint8Array(128);
 function measureOut(time) {
+  if (jarvis?.ready) { outLevel = outLevel * 0.5 + jarvis.level() * 0.5; return; }
   if (!isSpeaking()) { outLevel *= 0.85; return; }
   if (audioEl && outAnalyser) {
     outAnalyser.getByteTimeDomainData(levelBuf);
     let s = 0; for (const v of levelBuf) { const d = (v - 128) / 128; s += d * d; }
     outLevel = outLevel * 0.5 + Math.min(1, Math.sqrt(s / levelBuf.length) * 5) * 0.5;
   } else outLevel = 0.35 + 0.25 * Math.sin(time / 90) * Math.sin(time / 230);
+}
+
+
+/* ================= Jarvis mode: Gemini Live (instant voice + vision) ================= */
+let jarvis = null, jarvisFrames = 0, jarvisTurn = null, detecting = false, jarvisFailed = false;
+const jarvisWanted = () => S.jarvis && !!S.keys.gemini && !jarvisFailed;
+const ASKS_ABOUT_VIEW = /(وش|ايش|إيش|شو|ماذا|ما هذا|ما هذه|وين|أين|فين|حدد|حدّد|دلني|دوّر|هذا|هذي|هذه|ذا |قدامي|أمامي|شايف|تشوف|كم عدد|اقرأ|what|where|which|find|show|this|that|in front|identify|point|how many|read|look)/i;
+
+async function resolveLiveModel() {
+  if (S.liveModel) return S.liveModel;
+  const ids = await listModels({ provider: 'gemini', key: S.keys.gemini.trim(), method: 'bidiGenerateContent' });
+  log('live models: ' + (ids.join(', ') || 'none'));
+  const m = pickLiveModel(ids);
+  if (!m) throw new Error('no Gemini Live model for this key');
+  S.liveModel = m; save();
+  return m;
+}
+async function startJarvis() {
+  if (jarvis) return;
+  const ctx = ensureAudioCtx();
+  setStatus(t('jarvisConnecting'));
+  try {
+    const model = await resolveLiveModel();
+    jarvis = new GeminiLive({
+      key: S.keys.gemini.trim(), model, voice: S.liveVoice, ctx, log,
+      system: (S.system.trim() || t('sysDefault')) + '\n' + t('jarvisSys'),
+      on: {
+        inText: txt => {
+          if (!jarvisTurn || jarvisTurn.answered) { stopSpeaking(); jarvisTurn = { u: { role: 'user', text: '' }, a: null, answered: false, snap: snapshotNow() }; pushMsg(jarvisTurn.u); }
+          jarvisTurn.u.text += txt; updateMsg(jarvisTurn.u);
+        },
+        outText: txt => {
+          if (!jarvisTurn) { jarvisTurn = { u: null, a: null, answered: false, snap: null }; }
+          if (!jarvisTurn.a) { jarvisTurn.a = { role: 'assistant', text: '' }; pushMsg(jarvisTurn.a); maybeDetect(jarvisTurn); }
+          jarvisTurn.a.text += txt; updateMsg(jarvisTurn.a); setCaption(jarvisTurn.a.text);
+        },
+        turnDone: () => { if (jarvisTurn) { if (jarvisTurn.u && !jarvisTurn.a) maybeDetect(jarvisTurn); jarvisTurn.answered = true; } hideCaptionSoon(); bump(); },
+        interrupted: () => { if (jarvisTurn) jarvisTurn.answered = true; bump(); },
+        closed: reason => { jarvis = null; clearInterval(jarvisFrames); if (live) { setStatus(t('jarvisReconnect')); setTimeout(() => { if (live && !jarvis) startJarvis(); }, 1500); } },
+      },
+    });
+    await jarvis.connect();
+    setStatus(''); updateChip();
+    clearInterval(jarvisFrames);
+    // keep Gemini looking: one camera frame per second
+    jarvisFrames = setInterval(() => { if (jarvis?.ready && camStream && !document.hidden) jarvis.sendFrame(snapshotSmall()); }, 1000);
+  } catch (e) {
+    log(`jarvis failed: ${e.message}`);
+    jarvis?.close(); jarvis = null;
+    jarvisFailed = true;                 // fall back to the classic pipeline for this run
+    setStatus(t('jarvisFallback'), true);
+  }
+  bump();
+}
+function stopJarvis() { clearInterval(jarvisFrames); jarvis?.close(); jarvis = null; jarvisTurn = null; updateChip(); }
+function jarvisText(text) {
+  text = (text || '').trim(); if (!text) return;
+  jarvisTurn = { u: { role: 'user', text }, a: null, answered: false, snap: snapshotNow() };
+  pushMsg(jarvisTurn.u);
+  if (camStream) jarvis.sendFrame(snapshotSmall());
+  jarvis.sendText(text);
+}
+function snapshotNow() { return camStream && !document.hidden ? { image: snapshot(), t: lastSnapT } : null; }
+function snapshotSmall() {
+  const v = camVideo; if (!v.videoWidth) return null;
+  const c = snapshotSmall.c || (snapshotSmall.c = document.createElement('canvas'));
+  const sc = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
+  c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.6);
+}
+// When the question is about something visible, find it in the frame from that moment (in parallel with the spoken answer).
+async function maybeDetect(turn) {
+  if (turn.detected || !turn.u?.text || !turn.snap?.image || !ASKS_ABOUT_VIEW.test(turn.u.text)) return;
+  turn.detected = true; detecting = true; bump();
+  const t0 = performance.now();
+  try {
+    const boxes = await withModel('gemini', model => detectObjects({ key: S.keys.gemini.trim(), model, image: turn.snap.image, question: turn.u.text, lang: S.lang }));
+    log(`detect: ${boxes.length} boxes (${Math.round(performance.now() - t0)}ms)`);
+    if (boxes.length) {
+      const img = new Image(); img.src = turn.snap.image;
+      turn.u.image = turn.snap.image; turn.u.boxes = boxes;
+      const th = document.createElement('div'); th.className = 'thumb'; th.appendChild(img);
+      turn.u.el.insertBefore(th, turn.u.txtEl); turn.u.thumb = th; turn.u.imgEl = img;
+      drawThumbBoxes(turn.u);
+      showBoxes(boxes, img, turn.snap.t);
+    }
+  } catch (e) { log(`detect error: ${e.status || ''} ${String(e.message).slice(0, 120)}`); }
+  detecting = false; bump();
 }
 
 /* ================= camera / screen ================= */
@@ -571,10 +676,28 @@ async function camStart() {
     else setStatus(t('noCam', { e: e.message || e.name }), true);
     return false;
   }
+  // Quest Browser also offers a virtual "front" camera that shows your avatar; switch to the headset camera.
+  if (!S.camDevice) {
+    const better = await worldCamera(s);
+    if (better) { s.getTracks().forEach(tk => tk.stop()); try { s = await tryGet({ deviceId: { exact: better } }); } catch {} }
+  }
   attachStream(s, 'camera');
   log(`camera on (${s.getVideoTracks()[0]?.label || 'camera'})`);
   populateCams();
   return true;
+}
+const FRONT = /front|avatar|persona|virtual|user|selfie|facetime/i;
+const WORLD = /back|rear|environment|world|passthrough|headset|outward/i;
+async function worldCamera(stream) {
+  try {
+    const cur = stream.getVideoTracks()[0];
+    const curLabel = cur?.label || '', facing = cur?.getSettings?.().facingMode || '';
+    if (WORLD.test(curLabel) || facing === 'environment') return null;
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    log('cameras: ' + cams.map(d => d.label || '?').join(' | '));
+    const pick = cams.find(d => WORLD.test(d.label)) || (FRONT.test(curLabel) ? cams.find(d => d.label && !FRONT.test(d.label)) : null);
+    return pick && pick.deviceId !== cur?.getSettings?.().deviceId ? pick.deviceId : null;
+  } catch { return null; }
 }
 async function screenStart() {
   try { attachStream(await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 10 }, audio: false }), 'screen'); return true; }
@@ -770,7 +893,7 @@ function applyLang() {
   renderEmpty(); updateCamUI(); updateLiveUI(); checkKeysBanner(); updateChip();
   bump();
 }
-function updateChip() { $('model-chip').textContent = `${SHORT[S.provider]} · ${modelFor(S.provider) || '—'}`; }
+function updateChip() { $('model-chip').textContent = jarvis?.ready ? `Gemini Live · ${jarvis.model}` : `${SHORT[S.provider]} · ${modelFor(S.provider) || '—'}`; }
 function openSettings() { $('sheet').hidden = false; }
 function closeSettings() { $('sheet').hidden = true; checkKeysBanner(); autoStart(); }
 
@@ -813,6 +936,7 @@ function bindSettings() {
   bindChk('tts-on', 'ttsOn', () => { if (!S.ttsOn) stopSpeaking(); });
   bindChk('cam-attach', 'camAttach');
   bindChk('auto-cam', 'autoCam');
+  bindChk('jarvis', 'jarvis', () => { jarvisFailed = false; if (live) setLive(false).then(() => setLive(true)); });
   for (const [id, k] of [['ar-fov', 'arFov'], ['ar-offx', 'arOffX'], ['ar-offy', 'arOffY']]) {
     const el = $(id), out = $(id + '-v');
     el.value = S[k]; out.textContent = S[k];
@@ -833,13 +957,13 @@ function bindSettings() {
   $('version').textContent = VERSION + (NATIVE ? ' · app' : ' · web');
 }
 function bindUI() {
-  $('composer').onsubmit = e => { e.preventDefault(); const v = $('text').value; $('text').value = ''; ask(v); };
+  $('composer').onsubmit = e => { e.preventDefault(); const v = $('text').value; $('text').value = ''; if (jarvis?.ready) jarvisText(v); else ask(v); };
   $('mic').onclick = () => { ensureAudioCtx(); setLive(!live); };
   $('cam').onclick = camToggle;
   $('cam-enable').onclick = camStart;
   $('screen').hidden = NATIVE || !navigator.mediaDevices?.getDisplayMedia || /OculusBrowser|Quest|Android/i.test(navigator.userAgent);
   $('screen').onclick = screenToggle;
-  $('look').onclick = () => ask('', { forceImage: true });
+  $('look').onclick = () => { if (jarvis?.ready) jarvisText(t('whatsThisQ')); else ask('', { forceImage: true }); };
   $('stop').onclick = () => { stopAll(); setStatus(t('stopped')); setCaption(''); };
   $('clear').onclick = clearChat;
   $('lang').onclick = () => { S.lang = S.lang === 'ar' ? 'en' : 'ar'; save(); applyLang(); };

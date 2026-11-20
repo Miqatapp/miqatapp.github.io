@@ -186,7 +186,7 @@ export async function chat(opts) {
 }
 
 /** Lists model ids — doubles as an API key test. */
-export async function listModels({ provider, key, base }) {
+export async function listModels({ provider, key, base, method = 'generateContent' }) {
   let r;
   if (provider === 'anthropic') r = await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: ANTHROPIC_HEADERS(key) });
   else if (provider === 'gemini') r = await fetch(`${GEMINI}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
@@ -194,7 +194,7 @@ export async function listModels({ provider, key, base }) {
   if (!r.ok) throw await failure(r);
   const j = await r.json();
   if (provider === 'gemini') {
-    return (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+    return (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes(method))
       .map(m => m.name.replace(/^models\//, ''));
   }
   let ids = (j.data || []).map(m => m.id);
@@ -297,4 +297,35 @@ export function pickModel(provider, ids, kind = 'chat') {
     return ids.find(id => /sonnet/.test(id)) || ids[0];
   }
   return null;
+}
+
+/** Picks a Gemini Live (bidiGenerateContent) model: native-audio first, newest first. */
+export function pickLiveModel(ids) {
+  if (!ids?.length) return null;
+  const score = id => (/native-audio/.test(id) ? 2 : 0) + (/flash/.test(id) ? 1 : 0) - (/thinking|exp/.test(id) ? 1 : 0);
+  return [...ids].sort((a, b) => score(b) - score(a) || newestFirst(a, b))[0];
+}
+
+/** Fast object detection on one image. Returns [{label, box:[ymin,xmin,ymax,xmax]}]. */
+export async function detectObjects({ key, model, image, question, lang, signal }) {
+  const prompt = `The user is wearing a headset and asked: "${question}".
+Find the objects in this image that the question is about. If they ask what "this"/"that" is or what is in front of them, pick the single main object near the centre of the image.
+Reply with JSON only: [{"label": "<short name in ${lang === 'ar' ? 'Arabic' : 'English'}>", "box": [ymin, xmin, ymax, xmax]}] using integers 0-1000 relative to the image, boxes tight around each object. Reply [] if nothing visible matches.`;
+  const body = {
+    contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, { text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', ...geminiThinking(model) },
+  };
+  let r = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
+  });
+  if (r.status === 400) { // unknown thinking option on this model → retry without it
+    delete body.generationConfig.thinkingConfig;
+    r = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
+    });
+  }
+  if (!r.ok) throw await failure(r);
+  const txt = textOf('gemini', await r.json()).replace(/```(json)?/g, '').trim();
+  const arr = JSON.parse(txt.slice(txt.indexOf('['), txt.lastIndexOf(']') + 1) || '[]');
+  return arr.filter(b => Array.isArray(b.box) && b.box.length === 4 && b.box.every(Number.isFinite)).slice(0, 8);
 }
