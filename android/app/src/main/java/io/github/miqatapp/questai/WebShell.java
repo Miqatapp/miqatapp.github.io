@@ -45,6 +45,7 @@ public class WebShell {
     void placeBoxes(String json);
     void clearBoxes();
     void setPanelScale(float scale);
+    void moveBoxes(String json);
   }
 
   private final Activity act;
@@ -249,6 +250,7 @@ public class WebShell {
     /** json: {boxes:[{label, box:[ymin,xmin,ymax,xmax]}], ageMs, fov, offX, offY, aspect} */
     @JavascriptInterface public void placeBoxes(String json) { if (host != null) act.runOnUiThread(() -> host.placeBoxes(json)); }
     @JavascriptInterface public void clearBoxes() { if (host != null) act.runOnUiThread(host::clearBoxes); }
+    @JavascriptInterface public void moveBoxes(String json) { if (host != null) act.runOnUiThread(() -> host.moveBoxes(json)); }
     @JavascriptInterface public void setPanelScale(float s) { if (host != null) act.runOnUiThread(() -> host.setPanelScale(s)); }
 
     @JavascriptInterface public boolean canSpeak() { return ttsReady; }

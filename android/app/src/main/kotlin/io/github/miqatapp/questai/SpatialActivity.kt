@@ -122,7 +122,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     val it = markers.iterator()
     while (it.hasNext()) {
       val (e, born) = it.next()
-      if (now - born > MARKER_LIFE_MS) { e.destroy(); it.remove() }
+      if (now - born > MARKER_LIFE_MS) { e.destroy(); it.remove(); live.values.removeAll { m -> m.entity == e } }
     }
   }
 
@@ -137,6 +137,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
   override fun clearBoxes() {
     markers.forEach { it.first.destroy() }
     markers.clear()
+    live.clear()
   }
 
   override fun setPanelScale(scale: Float) {
@@ -193,56 +194,85 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     } catch (e: Exception) { Log.w(WebShell.TAG, "lens", e); null }
   }
 
+  /** How camera-image boxes map to the room for the current stream (kept so tracked boxes can move). */
+  private class Frame(val lens: Lens?, val w: Float, val h: Float, val hf: Float, val vf: Float, val offX: Float, val offY: Float)
+  private class Marker(val entity: Entity, val born: Long, val dist: Float, val bw0: Float, val bh0: Float, val labelM: Float)
+  private var frame: Frame? = null
+  private val live = HashMap<Int, Marker>()   // box index → marker
+
+  private fun frameFrom(o: JSONObject): Frame {
+    val w = o.optDouble("w", 1280.0).toFloat(); val h = o.optDouble("h", 960.0).toFloat()
+    val hf = (o.optDouble("fov", 78.0) * PI / 180).toFloat()
+    return Frame(lensFor(o.optString("cam")), w, h, hf, 2f * atan(tan(hf / 2f) * h / w),
+        tan((o.optDouble("offX", 0.0) * PI / 180).toFloat()), tan((o.optDouble("offY", 0.0) * PI / 180).toFloat()))
+  }
+
+  /** Box (0..1000, [ymin,xmin,ymax,xmax]) seen from `head` → marker centre and size at `dist`. */
+  private fun aim(f: Frame, a: org.json.JSONArray, dist: Float, head: Pose, labelM: Float): Triple<Vector3, Float, Float> {
+    fun tanOf(u: Float, v: Float): Pair<Float, Float> =
+        f.lens?.tan(u, v, f.w, f.h) ?: (tan((u - 0.5f) * f.hf) to tan((0.5f - v) * f.vf))
+    val fwd = head.forward(); val right = head.right(); val up = head.up()
+    fun world(v: FloatArray) = right.times(v[0]).plus(up.times(v[1])).plus(fwd.times(-v[2]))
+    val camF = f.lens?.let { world(it.fwd) } ?: fwd
+    val camR = f.lens?.let { world(it.right) } ?: right
+    val camU = f.lens?.let { world(it.up) } ?: up
+    val camPos = f.lens?.let { head.t.plus(world(it.pos)) } ?: head.t
+    val y0 = (a.getDouble(0) / 1000).toFloat(); val x0 = (a.getDouble(1) / 1000).toFloat()
+    val y1 = (a.getDouble(2) / 1000).toFloat(); val x1 = (a.getDouble(3) / 1000).toFloat()
+    val (tx0, ty0) = tanOf(min(x0, x1), min(y0, y1))
+    val (tx1, ty1) = tanOf(max(x0, x1), max(y0, y1))
+    val tx = (tx0 + tx1) / 2f + f.offX; val ty = (ty0 + ty1) / 2f + f.offY
+    val dir = camF.plus(camR.times(tx)).plus(camU.times(ty)).normalize()
+    val along = dist / kotlin.math.sqrt(1f + tx * tx + ty * ty)
+    val bw = max(0.03f, kotlin.math.abs(tx1 - tx0) * along)
+    val bh = max(0.03f, kotlin.math.abs(ty0 - ty1) * along)
+    return Triple(camPos.plus(dir.times(dist)).plus(up.times(labelM / 2f)), bw, bh)
+  }
+
   /** json: {boxes:[{label, box:[ymin,xmin,ymax,xmax], dist?}], ageMs, cam, w, h, fov, offX, offY, dist} */
   override fun placeBoxes(json: String) {
     try {
       val o = JSONObject(json)
       val boxes = o.getJSONArray("boxes")
       val head = poseAt(o.optLong("ageMs", 0))
-      val w = o.optDouble("w", 1280.0).toFloat(); val h = o.optDouble("h", 960.0).toFloat()
-      val lens = lensFor(o.optString("cam"))
-      val hf = (o.optDouble("fov", 78.0) * PI / 180).toFloat()
-      val vf = 2f * atan(tan(hf / 2f) * h / w)
-      val offX = tan((o.optDouble("offX", 0.0) * PI / 180).toFloat())
-      val offY = tan((o.optDouble("offY", 0.0) * PI / 180).toFloat())
+      val f = frameFrom(o).also { frame = it }
       val defaultDist = o.optDouble("dist", 1.2).toFloat()
-      // image point → (x, y) in tangent units
-      fun tanOf(u: Float, v: Float): Pair<Float, Float> =
-          lens?.tan(u, v, w, h) ?: (tan((u - 0.5f) * hf) to tan((0.5f - v) * vf))
       clearBoxes()
-      val fwd = head.forward(); val right = head.right(); val up = head.up()
-      // headset-frame vector (x right, y up, z back) → world
-      fun world(v: FloatArray) = right.times(v[0]).plus(up.times(v[1])).plus(fwd.times(-v[2]))
-      val camF = lens?.let { world(it.fwd) } ?: fwd
-      val camR = lens?.let { world(it.right) } ?: right
-      val camU = lens?.let { world(it.up) } ?: up
-      val camPos = lens?.let { head.t.plus(world(it.pos)) } ?: head.t
-      val report = StringBuilder(lens?.info ?: "no lens calibration, fov ${o.optDouble("fov", 78.0)}")
+      val report = StringBuilder(f.lens?.info ?: "no lens calibration, fov ${o.optDouble("fov", 78.0)}")
       for (i in 0 until min(boxes.length(), SLOTS)) {
         val b = boxes.getJSONObject(i)
-        val a = b.getJSONArray("box")
-        val y0 = (a.getDouble(0) / 1000).toFloat(); val x0 = (a.getDouble(1) / 1000).toFloat()
-        val y1 = (a.getDouble(2) / 1000).toFloat(); val x1 = (a.getDouble(3) / 1000).toFloat()
-        val (tx0, ty0) = tanOf(min(x0, x1), min(y0, y1))
-        val (tx1, ty1) = tanOf(max(x0, x1), max(y0, y1))
-        val tx = (tx0 + tx1) / 2f + offX; val ty = (ty0 + ty1) / 2f + offY
         val dist = b.optDouble("dist", defaultDist.toDouble()).toFloat().coerceIn(0.3f, 6f)
-        val dir = camF.plus(camR.times(tx)).plus(camU.times(ty)).normalize()
-        // size at that distance (tangent span × distance along the axis)
-        val along = dist / kotlin.math.sqrt(1f + tx * tx + ty * ty)
-        val bw = max(0.03f, kotlin.math.abs(tx1 - tx0) * along)
-        val bh = max(0.03f, kotlin.math.abs(ty0 - ty1) * along)
         val labelM = (LABEL_M * dist / 1.2f).coerceIn(0.04f, 0.16f)
+        val (centre, bw, bh) = aim(f, b.getJSONArray("box"), dist, head, labelM)
         val id = BOX_BASE + (nextSlot++ % SLOTS)
         specs[id] = Spec(b.optString("label"), i, bw, bh, labelM)
-        val centre = camPos.plus(dir.times(dist)).plus(up.times(labelM / 2f))
         val e = Entity.createPanelEntity(id, Transform(Pose(centre, head.q)))
-        markers += e to SystemClock.uptimeMillis()
+        val now = SystemClock.uptimeMillis()
+        markers += e to now
+        live[i] = Marker(e, now, dist, bw, bh, labelM)
         report.append(" | ${b.optString("label")} d=${"%.1f".format(dist)} ${"%.2f".format(bw)}x${"%.2f".format(bh)}m")
       }
       shell.js("window.questaiLog && window.questaiLog(" + JSONObject.quote("AR " + report) + ")")
     } catch (e: Exception) {
       Log.w(WebShell.TAG, "placeBoxes", e)
+    }
+  }
+
+  /** Tracked positions from the live camera: json {boxes:[{i, box}]} — moves the existing markers. */
+  override fun moveBoxes(json: String) {
+    val f = frame ?: return
+    try {
+      val boxes = JSONObject(json).getJSONArray("boxes")
+      val head = scene.getViewerPose()
+      for (k in 0 until boxes.length()) {
+        val b = boxes.getJSONObject(k)
+        val m = live[b.getInt("i")] ?: continue
+        val (centre, bw, bh) = aim(f, b.getJSONArray("box"), m.dist, head, m.labelM)
+        m.entity.setComponent(Transform(Pose(centre, head.q)))
+        m.entity.setComponent(Scale(Vector3(bw / m.bw0, (bh + m.labelM) / (m.bh0 + m.labelM), 1f)))
+      }
+    } catch (e: Exception) {
+      Log.w(WebShell.TAG, "moveBoxes", e)
     }
   }
 

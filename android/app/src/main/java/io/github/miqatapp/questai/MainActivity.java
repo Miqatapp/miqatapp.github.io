@@ -25,4 +25,5 @@ public class MainActivity extends Activity implements WebShell.Host {
   @Override public void placeBoxes(String json) {}
   @Override public void clearBoxes() {}
   @Override public void setPanelScale(float scale) {}
+  @Override public void moveBoxes(String json) {}
 }
