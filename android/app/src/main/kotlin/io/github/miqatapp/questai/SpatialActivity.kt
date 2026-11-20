@@ -146,7 +146,10 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
 
   /** Where a pixel of the camera image points, in "tangent" units (x right, y up) relative to the
    *  camera's optical axis. Uses the camera's real calibration when the system provides it. */
-  private class Lens(val fx: Float, val fy: Float, val cx: Float, val cy: Float, val sw: Float, val sh: Float, val info: String) {
+  /** fwd/right/up: the camera's optical axis and image axes in the headset frame (x right, y up, z back);
+   *  pos: camera position in that frame (metres). */
+  private class Lens(val fx: Float, val fy: Float, val cx: Float, val cy: Float, val sw: Float, val sh: Float, val info: String,
+                     val fwd: FloatArray, val right: FloatArray, val up: FloatArray, val pos: FloatArray) {
     fun tan(u: Float, v: Float, w: Float, h: Float): Pair<Float, Float> {
       // the stream is the sensor image scaled (and centre-cropped if the aspect differs)
       val scale = max(w / sw, h / sh)
@@ -166,12 +169,27 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
       val k = ch.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION) ?: return null
       val arr = ch.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
           ?: ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return null
-      val rot = ch.get(CameraCharacteristics.LENS_POSE_ROTATION)?.joinToString(",") { "%.3f".format(it) }
-      val tr = ch.get(CameraCharacteristics.LENS_POSE_TRANSLATION)?.joinToString(",") { "%.3f".format(it) }
+      val q = ch.get(CameraCharacteristics.LENS_POSE_ROTATION) ?: floatArrayOf(0f, 0f, 0f, 1f)
+      val tr = ch.get(CameraCharacteristics.LENS_POSE_TRANSLATION) ?: floatArrayOf(0f, 0f, 0f)
       val sw = arr.width().toFloat(); val sh = arr.height().toFloat()
       val hfov = 2 * atan(sw / 2 / k[0]) * 180 / PI
+      // LENS_POSE_ROTATION rotates the device frame into the camera frame (camera: x right,
+      // y down, z = optical axis). Undo it to get the camera axes in the device frame. If that
+      // points backwards, the platform used the opposite convention, so use the other direction.
+      var inv = true
+      var f = rotate(q, floatArrayOf(0f, 0f, 1f), inv)
+      if (f[2] > 0f) { inv = false; f = rotate(q, floatArrayOf(0f, 0f, 1f), inv) }
+      var r = rotate(q, floatArrayOf(1f, 0f, 0f), inv)
+      var u = rotate(q, floatArrayOf(0f, -1f, 0f), inv)
+      if (f[2] > 0f) { f = floatArrayOf(0f, 0f, -1f); r = floatArrayOf(1f, 0f, 0f); u = floatArrayOf(0f, 1f, 0f) }   // still nonsense: assume straight ahead
+      if (u[1] < 0f) { r = r.map { -it }.toFloatArray(); u = u.map { -it }.toFloatArray() }                         // image delivered upside down
+      val pos = if (kotlin.math.sqrt(tr[0] * tr[0] + tr[1] * tr[1] + tr[2] * tr[2]) < 0.25f) tr else floatArrayOf(0f, 0f, 0f)
+      val pitch = Math.toDegrees(kotlin.math.asin(f[1].toDouble().coerceIn(-1.0, 1.0)))
+      val yaw = Math.toDegrees(kotlin.math.atan2(f[0].toDouble(), -f[2].toDouble()))
       Lens(k[0], k[1], k[2], k[3], sw, sh,
-          "cam $id ${sw.toInt()}x${sh.toInt()} fx=${"%.0f".format(k[0])} cx=${"%.0f".format(k[2])} cy=${"%.0f".format(k[3])} hfov=${"%.0f".format(hfov)} rot=[$rot] t=[$tr]")
+          "cam $id ${sw.toInt()}x${sh.toInt()} fx=${"%.0f".format(k[0])} hfov=${"%.0f".format(hfov)} pitch=${"%.1f".format(pitch)} yaw=${"%.1f".format(yaw)} " +
+              "q=[${q.joinToString(",") { "%.3f".format(it) }}] t=[${tr.joinToString(",") { "%.3f".format(it) }}] inv=$inv",
+          f, r, u, pos)
     } catch (e: Exception) { Log.w(WebShell.TAG, "lens", e); null }
   }
 
@@ -193,6 +211,12 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
           lens?.tan(u, v, w, h) ?: (tan((u - 0.5f) * hf) to tan((0.5f - v) * vf))
       clearBoxes()
       val fwd = head.forward(); val right = head.right(); val up = head.up()
+      // headset-frame vector (x right, y up, z back) → world
+      fun world(v: FloatArray) = right.times(v[0]).plus(up.times(v[1])).plus(fwd.times(-v[2]))
+      val camF = lens?.let { world(it.fwd) } ?: fwd
+      val camR = lens?.let { world(it.right) } ?: right
+      val camU = lens?.let { world(it.up) } ?: up
+      val camPos = lens?.let { head.t.plus(world(it.pos)) } ?: head.t
       val report = StringBuilder(lens?.info ?: "no lens calibration, fov ${o.optDouble("fov", 78.0)}")
       for (i in 0 until min(boxes.length(), SLOTS)) {
         val b = boxes.getJSONObject(i)
@@ -203,7 +227,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
         val (tx1, ty1) = tanOf(max(x0, x1), max(y0, y1))
         val tx = (tx0 + tx1) / 2f + offX; val ty = (ty0 + ty1) / 2f + offY
         val dist = b.optDouble("dist", defaultDist.toDouble()).toFloat().coerceIn(0.3f, 6f)
-        val dir = fwd.plus(right.times(tx)).plus(up.times(ty)).normalize()
+        val dir = camF.plus(camR.times(tx)).plus(camU.times(ty)).normalize()
         // size at that distance (tangent span × distance along the axis)
         val along = dist / kotlin.math.sqrt(1f + tx * tx + ty * ty)
         val bw = max(0.03f, kotlin.math.abs(tx1 - tx0) * along)
@@ -211,7 +235,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
         val labelM = (LABEL_M * dist / 1.2f).coerceIn(0.04f, 0.16f)
         val id = BOX_BASE + (nextSlot++ % SLOTS)
         specs[id] = Spec(b.optString("label"), i, bw, bh, labelM)
-        val centre = head.t.plus(dir.times(dist)).plus(up.times(labelM / 2f))
+        val centre = camPos.plus(dir.times(dist)).plus(up.times(labelM / 2f))
         val e = Entity.createPanelEntity(id, Transform(Pose(centre, head.q)))
         markers += e to SystemClock.uptimeMillis()
         report.append(" | ${b.optString("label")} d=${"%.1f".format(dist)} ${"%.2f".format(bw)}x${"%.2f".format(bh)}m")
@@ -280,6 +304,17 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
   }
 
   companion object {
+    /** Rotates v by quaternion q = (x, y, z, w), or by its inverse. */
+    private fun rotate(q: FloatArray, v: FloatArray, inverse: Boolean): FloatArray {
+      val x = if (inverse) -q[0] else q[0]; val y = if (inverse) -q[1] else q[1]; val z = if (inverse) -q[2] else q[2]; val w = q[3]
+      // t = 2 * cross(q.xyz, v); v' = v + w * t + cross(q.xyz, t)
+      val tx = 2f * (y * v[2] - z * v[1]); val ty = 2f * (z * v[0] - x * v[2]); val tz = 2f * (x * v[1] - y * v[0])
+      return floatArrayOf(
+          v[0] + w * tx + (y * tz - z * ty),
+          v[1] + w * ty + (z * tx - x * tz),
+          v[2] + w * tz + (x * ty - y * tx))
+    }
+
     private const val UI_PANEL = 0x51A1
     private const val BOX_BASE = 0x51B0
     private const val SLOTS = 8

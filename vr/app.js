@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.3';
+const VERSION = '5.4';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
