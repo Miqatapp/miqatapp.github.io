@@ -139,7 +139,7 @@ export async function createXR(core) {
     g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 3; g.stroke();
     g.textBaseline = 'middle';
     g.direction = rtl ? 'rtl' : 'ltr'; g.textAlign = rtl ? 'right' : 'left';
-    g.fillStyle = '#eceef1'; g.font = `600 42px ${FONT}`; g.fillText('Quest AI', rtl ? W - 56 : 56, 64);
+    g.fillStyle = '#eceef1'; g.font = `600 42px ${FONT}`; g.fillText('NOVA', rtl ? W - 56 : 56, 64);
     g.direction = 'ltr'; g.textAlign = rtl ? 'left' : 'right'; g.fillStyle = '#8b929c'; g.font = `500 26px ${MONO}`;
     g.fillText(`${core.SHORT[S.provider]} · ${core.modelFor(S.provider)}`, rtl ? 56 : W - 56, 64);
     g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(48, 110, W - 96, 2);

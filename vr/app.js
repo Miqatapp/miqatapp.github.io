@@ -638,7 +638,7 @@ async function jarvisTool(name, args) {
     return boxes.length ? 'Marked: ' + boxes.map(b => b.label).join(', ') : 'Nothing matching was found in view.';
   }
   if (name === 'open_app') {
-    if (!NATIVE) return 'Opening apps only works in the installed Quest AI app.';
+    if (!NATIVE) return 'Opening apps only works in the installed NOVA app.';
     return window.QuestAINative.launchApp(String(args.name || ''));
   }
   if (name === 'open_website') {
@@ -1122,7 +1122,7 @@ const core = {
 };
 
 /* ================= boot ================= */
-log(`Quest AI ${VERSION} ${NATIVE ? 'app' : 'web'} · ${navigator.userAgent.match(/(OculusBrowser|Quest[^;)]*|Android [\d.]+)/)?.[0] || ''}`);
+log(`NOVA ${VERSION} ${NATIVE ? 'app' : 'web'} · ${navigator.userAgent.match(/(OculusBrowser|Quest[^;)]*|Android [\d.]+)/)?.[0] || ''}`);
 let autoStarting = false;
 bindSettings();
 bindUI();

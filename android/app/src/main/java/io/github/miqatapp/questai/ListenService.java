@@ -21,13 +21,13 @@ public class ListenService extends Service {
   public int onStartCommand(Intent intent, int flags, int startId) {
     NotificationManager nm = getSystemService(NotificationManager.class);
     if (nm.getNotificationChannel(CHANNEL) == null) {
-      nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Quest AI", NotificationManager.IMPORTANCE_LOW));
+      nm.createNotificationChannel(new NotificationChannel(CHANNEL, "NOVA", NotificationManager.IMPORTANCE_LOW));
     }
     PendingIntent open = PendingIntent.getActivity(this, 0,
         new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     Notification n = new Notification.Builder(this, CHANNEL)
-        .setContentTitle("Quest AI")
+        .setContentTitle("NOVA")
         .setContentText("يسمعك الحين · Listening")
         .setSmallIcon(android.R.drawable.ic_btn_speak_now)
         .setContentIntent(open)

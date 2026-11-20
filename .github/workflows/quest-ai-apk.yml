@@ -21,7 +21,7 @@ jobs:
         working-directory: android
         run: gradle --no-daemon assembleRelease
       - name: Rename
-        run: cp android/app/build/outputs/apk/release/app-release.apk QuestAI.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk QuestAI.apk && cp QuestAI.apk NOVA.apk
       - uses: actions/upload-artifact@v4
         with: { name: QuestAI-apk, path: QuestAI.apk }
       - name: Publish release
@@ -29,12 +29,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: quest-ai
-          name: Quest AI (Meta Quest)
+          name: NOVA (Meta Quest)
           target_commitish: ${{ github.sha }}
           make_latest: true
-          files: QuestAI.apk
+          files: |
+            QuestAI.apk
+            NOVA.apk
           body: |
-            Quest AI — مساعد ذكاء اصطناعي لنظارة Meta Quest (تطبيق أصلي).
+            NOVA — مساعد ذكاء اصطناعي لنظارة Meta Quest (تطبيق أصلي، واقع معزز).
             حمّل QuestAI.apk وثبّته على النظارة (وضع المطوّر + SideQuest أو Meta Quest Developer Hub).
 
   # Installs the APK on an Android emulator, launches it and captures screenshots + the app's console log.
