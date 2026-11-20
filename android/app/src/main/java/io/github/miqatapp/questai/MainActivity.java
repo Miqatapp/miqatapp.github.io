@@ -24,4 +24,5 @@ public class MainActivity extends Activity implements WebShell.Host {
   @Override public boolean isSpatial() { return false; }
   @Override public void placeBoxes(String json) {}
   @Override public void clearBoxes() {}
+  @Override public void setPanelScale(float scale) {}
 }

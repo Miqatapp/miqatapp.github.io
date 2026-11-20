@@ -41,7 +41,10 @@ export class Tracker {
       const k = TPL / Math.max(r.w, r.h);
       const tw = Math.max(8, Math.round(r.w * k)), th = Math.max(8, Math.round(r.h * k));
       const raw = sample(f, r, tw, th);
-      return { i, label: b.label, r, sm: { ...r }, tw, th, raw, tpl: normalize(raw), score: 1, miss: 0, lost: false, lostAt: 0, born: now, global: true };
+      // a plain surface (black door, white wall) has nothing to lock on to: show it, don't chase it
+      let m = 0, v = 0; for (const x of raw) m += x; m /= raw.length; for (const x of raw) v += (x - m) * (x - m);
+      const flat = Math.sqrt(v / raw.length) < 10;
+      return { i, label: b.label, r, r0: { ...r }, sm: { ...r }, tw, th, raw, tpl: normalize(raw), score: 1, miss: 0, lost: false, lostAt: 0, born: now, global: !flat, flat };
     });
   }
 
@@ -54,6 +57,7 @@ export class Tracker {
     this.frameW = f.W; this.frameH = f.H;
     const allowGlobal = now - this.lastGlobal > 600;
     for (const it of this.items) {
+      if (it.flat) continue;
       let best;
       if (it.global || it.lost) {
         if (!allowGlobal) continue;
@@ -67,6 +71,8 @@ export class Tracker {
       }
       if (best) best = search(f, it, best.cx, best.cy, 3, 1, [1], best.s) || best;
 
+      // never let a box grow or shrink far from what the model drew
+      if (best && (best.r.w > it.r0.w * 1.8 || best.r.w < it.r0.w * 0.55)) best = null;
       if (best && best.score >= OK) {
         it.r = best.r; it.score = best.score; it.miss = 0;
         if (it.lost) { it.lost = false; }
@@ -79,7 +85,7 @@ export class Tracker {
         it.lost = true; it.lostAt = now;
       }
     }
-    this.items = this.items.filter(it => !(it.lost && now - it.lostAt > FORGET_MS));
+    this.items = this.items.filter(it => !(it.lost && now - it.lostAt > FORGET_MS) && !(it.flat && now - it.born > 5000));
   }
 
   /** Smoothed rectangles in 0..1 frame coordinates for drawing. */
