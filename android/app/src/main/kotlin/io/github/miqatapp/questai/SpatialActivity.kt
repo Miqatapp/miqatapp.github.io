@@ -53,7 +53,10 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
   // camera frame was taken (the answer arrives a moment later)
   private val poses = ArrayDeque<Pair<Long, Pose>>()
 
-  private data class Spec(val label: String, val index: Int, val w: Float, val h: Float, val labelM: Float = LABEL_M)
+  private data class Spec(val label: String, val index: Int, val w: Float, val h: Float, val labelM: Float = LABEL_M) {
+    /** The panel is at least as wide as the name tag, so long names are never cut. */
+    val panelW: Float get() = max(w, (String.format("%02d  %s", index + 1, label).length * 0.34f + 1.2f) * labelM)
+  }
   private val specs = HashMap<Int, Spec>()
   private val markers = mutableListOf<Pair<Entity, Long>>()
   private var nextSlot = 0
@@ -89,7 +92,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
                 val s = specs[id] ?: Spec("", 0, 0.2f, 0.2f)
                 val h = s.h + s.labelM
                 UIPanelSettings(
-                    QuadShapeOptions(s.w, h),
+                    QuadShapeOptions(s.panelW, h),
                     DpPerMeterDisplayOptions(900f, 1.5f),
                     UIPanelRenderOptions(),
                     PanelStyleOptions(R.style.TransparentPanel))
@@ -117,6 +120,17 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
       // a little below eye level so the room in front stays visible
       val pos = pose.t.plus(flat.forward().times(0.95f)).plus(Vector3(0f, -0.30f, 0f))
       uiEntity = Entity.createPanelEntity(UI_PANEL, Transform(Pose(pos, flat.q)), Grabbable(), Scale(Vector3(panelScale, panelScale, panelScale)))
+    }
+    // glide every marker toward where the tracker last saw its object (frame-rate independent)
+    val dt = ((now - lastTick).coerceIn(1L, 100L)) / 1000f
+    lastTick = now
+    val a = 1f - kotlin.math.exp(-dt * 16f)
+    for (m in live.values) {
+      val tgt = m.target ?: continue
+      m.pos = m.pos.times(1f - a).plus(tgt.times(a))
+      m.sx += (m.tsx - m.sx) * a; m.sy += (m.tsy - m.sy) * a
+      m.entity.setComponent(Transform(Pose(m.pos, m.facing.q)))
+      m.entity.setComponent(Scale(Vector3(m.sx, m.sy, 1f)))
     }
     // markers fade after a while
     val it = markers.iterator()
@@ -196,7 +210,12 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
 
   /** How camera-image boxes map to the room for the current stream (kept so tracked boxes can move). */
   private class Frame(val lens: Lens?, val w: Float, val h: Float, val hf: Float, val vf: Float, val offX: Float, val offY: Float)
-  private class Marker(val entity: Entity, val born: Long, val dist: Float, val bw0: Float, val bh0: Float, val labelM: Float)
+  private class Marker(val entity: Entity, val born: Long, val dist: Float, val bw0: Float, val bh0: Float, val labelM: Float,
+                       var pos: Vector3, var facing: Pose) {
+    var target: Vector3? = null
+    var sx = 1f; var sy = 1f; var tsx = 1f; var tsy = 1f
+  }
+  private var lastTick = 0L
   private var frame: Frame? = null
   private val live = HashMap<Int, Marker>()   // box index → marker
 
@@ -249,7 +268,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
         val e = Entity.createPanelEntity(id, Transform(Pose(centre, head.q)))
         val now = SystemClock.uptimeMillis()
         markers += e to now
-        live[i] = Marker(e, now, dist, bw, bh, labelM)
+        live[i] = Marker(e, now, dist, bw, bh, labelM, centre, head)
         report.append(" | ${b.optString("label")} d=${"%.1f".format(dist)} ${"%.2f".format(bw)}x${"%.2f".format(bh)}m")
       }
       shell.js("window.questaiLog && window.questaiLog(" + JSONObject.quote("AR " + report) + ")")
@@ -268,8 +287,9 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
         val b = boxes.getJSONObject(k)
         val m = live[b.getInt("i")] ?: continue
         val (centre, bw, bh) = aim(f, b.getJSONArray("box"), m.dist, head, m.labelM)
-        m.entity.setComponent(Transform(Pose(centre, head.q)))
-        m.entity.setComponent(Scale(Vector3(bw / m.bw0, (bh + m.labelM) / (m.bh0 + m.labelM), 1f)))
+        // onSceneTick glides there; jumping straight to each update is what made it look jerky
+        m.target = centre; m.facing = head
+        m.tsx = bw / m.bw0; m.tsy = (bh + m.labelM) / (m.bh0 + m.labelM)
       }
     } catch (e: Exception) {
       Log.w(WebShell.TAG, "moveBoxes", e)
@@ -309,11 +329,12 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     override fun onDraw(c: Canvas) {
       val W = width.toFloat(); val H = height.toFloat()
       val labelH = H * spec.labelM / (spec.h + spec.labelM)
-      val r = RectF(8f, labelH + 8f, W - 8f, H - 8f)
+      val bw = W * spec.w / spec.panelW   // the box is centred; the panel may be wider for the name
+      val r = RectF((W - bw) / 2f + 8f, labelH + 8f, (W + bw) / 2f - 8f, H - 8f)
       c.drawRect(r, fill)
       c.drawRect(r, line)
       val L = min(r.width(), r.height()) * 0.25f
-      glow.strokeWidth = max(6f, W / 80f)
+      glow.strokeWidth = max(6f, bw / 80f)
       for ((x, y, dx, dy) in listOf(
           floatArrayOf(r.left, r.top, 1f, 1f), floatArrayOf(r.right, r.top, -1f, 1f),
           floatArrayOf(r.left, r.bottom, 1f, -1f), floatArrayOf(r.right, r.bottom, -1f, -1f))) {
