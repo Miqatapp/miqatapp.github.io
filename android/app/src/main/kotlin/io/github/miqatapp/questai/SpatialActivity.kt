@@ -20,7 +20,7 @@ import com.meta.spatial.toolkit.AppSystemActivity
 import com.meta.spatial.toolkit.Grabbable
 import com.meta.spatial.toolkit.PanelRegistration
 import com.meta.spatial.toolkit.PanelStyleOptions
-import com.meta.spatial.toolkit.PixelDisplayOptions
+import com.meta.spatial.toolkit.DpPerMeterDisplayOptions
 import com.meta.spatial.toolkit.QuadShapeOptions
 import com.meta.spatial.toolkit.Transform
 import com.meta.spatial.toolkit.UIPanelRenderOptions
@@ -66,7 +66,8 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
         ViewPanelRegistration(
             UI_PANEL,
             { _, ctx -> shell.create(ctx, savedState) },
-            { UIPanelSettings(QuadShapeOptions(1.5f, 0.94f), PixelDisplayOptions(1500, 940)) }))
+            // ~1275 x 800 dp layout on a 1.5 m panel, rendered at 1.5x for crisp text
+            { UIPanelSettings(QuadShapeOptions(1.5f, 0.94f), DpPerMeterDisplayOptions(850f, 1.5f)) }))
     for (i in 0 until SLOTS) {
       val id = BOX_BASE + i
       list +=
@@ -78,7 +79,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
                 val h = s.h + LABEL_M
                 UIPanelSettings(
                     QuadShapeOptions(s.w, h),
-                    PixelDisplayOptions(px(s.w), px(h)),
+                    DpPerMeterDisplayOptions(900f, 1.5f),
                     UIPanelRenderOptions(),
                     PanelStyleOptions(R.style.TransparentPanel))
               })
@@ -228,6 +229,5 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     private const val LABEL_M = 0.07f
     private const val MARKER_LIFE_MS = 45_000L
     private const val LIME = 0xFFD4FF3F.toInt()
-    private fun px(m: Float) = max(64, (m * 900).toInt())
   }
 }
