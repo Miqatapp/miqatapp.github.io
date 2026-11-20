@@ -59,7 +59,8 @@ public class WebShell {
 
   public WebView create(Context ctx, Bundle state) {
     web = new WebView(ctx);
-    web.setBackgroundColor(0xFF0A0B0D);
+    // in the headset the panel is see-through glass (the page draws its own translucent background)
+    web.setBackgroundColor(host != null && host.isSpatial() ? 0x00000000 : 0xFF0A0B0D);
     WebSettings s = web.getSettings();
     s.setJavaScriptEnabled(true);
     s.setDomStorageEnabled(true);

@@ -330,7 +330,7 @@ ${zoom ? 'The second image is a zoomed-in crop of the CENTRE of the first image 
     contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64(image) } }, ...(zoom ? [{ inline_data: { mime_type: 'image/jpeg', data: b64(zoom) } }] : []), { text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', ...geminiThinking(model) },
   };
-  signal = signal || AbortSignal.timeout(10000);
+  signal = signal || AbortSignal.timeout(6000);   // slow model → the ladder moves on to a faster one
   let r = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body),
   });

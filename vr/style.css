@@ -199,9 +199,17 @@ canvas.xr { position: fixed; inset: 0; z-index: 20; }
 }
 /* headset: compact layout without the in-app camera view */
 .size-row { display: inline-flex; gap: 2px; }
-body.compact .stage { grid-template-columns: 1fr; }
-body.compact .viewport { display: none; }
-body.compact .side { background: var(--bg); }
+body.compact .stage { grid-template-columns: 1fr; position: relative; }
+/* small live preview in the corner so you can see the camera is working */
+body.compact .viewport { position: absolute; z-index: 3; top: 10px; inset-inline-end: 12px; width: 168px; height: 126px;
+  border: 1px solid var(--hair2); border-radius: 12px; }
+body.compact .viewport .vp-top, body.compact .viewport .vp-frame, body.compact .viewport .vp-bottom, body.compact .viewport .vp-empty span,
+body.compact .viewport .meter, body.compact .viewport #cam-enable { display: none; }
+body.compact .viewport .vp-empty b { font-size: 12px; margin: 0; }
+/* see-through glass panel in the headset */
+body.spatial, body.spatial .app, body.spatial .dock, body.spatial .bar { background: transparent; }
+body.spatial .app { background: rgba(10, 11, 13, .74); border-radius: 22px; overflow: hidden; }
+body.spatial .side { background: transparent; }
 
 /* short windows (e.g. keyboard open): keep the essentials, drop decoration */
 @media (max-height: 560px) {
