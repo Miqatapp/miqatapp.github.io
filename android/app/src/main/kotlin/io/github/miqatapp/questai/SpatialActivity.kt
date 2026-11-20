@@ -47,7 +47,7 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
   private var savedState: Bundle? = null
   private var uiPlaced = false
   private var uiEntity: Entity? = null
-  private var panelScale = 1f
+  private var panelScale = 0.62f
 
   // head poses of the last few seconds, so a box is projected from where the head was when the
   // camera frame was taken (the answer arrives a moment later)
@@ -72,7 +72,13 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
             UI_PANEL,
             { _, ctx -> shell.create(ctx, savedState) },
             // ~1275 x 800 dp layout on a 1.5 m panel, rendered at 1.5x for crisp text
-            { UIPanelSettings(QuadShapeOptions(1.5f, 0.94f), DpPerMeterDisplayOptions(850f, 1.5f)) }))
+            {
+              UIPanelSettings(
+                  QuadShapeOptions(1.5f, 0.94f),
+                  DpPerMeterDisplayOptions(850f, 1.5f),
+                  UIPanelRenderOptions(),
+                  PanelStyleOptions(R.style.TransparentPanel))
+            }))
     for (i in 0 until SLOTS) {
       val id = BOX_BASE + i
       list +=
@@ -108,7 +114,8 @@ class SpatialActivity : AppSystemActivity(), WebShell.Host {
     if (!uiPlaced && (pose.t.x != 0f || pose.t.y != 0f || pose.t.z != 0f)) {
       uiPlaced = true
       val flat = pose.removePitchAndRoll()
-      val pos = pose.t.plus(flat.forward().times(1.05f)).plus(Vector3(0f, -0.12f, 0f))
+      // a little below eye level so the room in front stays visible
+      val pos = pose.t.plus(flat.forward().times(0.95f)).plus(Vector3(0f, -0.30f, 0f))
       uiEntity = Entity.createPanelEntity(UI_PANEL, Transform(Pose(pos, flat.q)), Grabbable(), Scale(Vector3(panelScale, panelScale, panelScale)))
     }
     // markers fade after a while

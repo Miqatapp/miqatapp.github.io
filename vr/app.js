@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.2';
+const VERSION = '5.3';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -16,7 +16,7 @@ const DEF = {
   keys: { openai: '', anthropic: '', gemini: '', custom: '' },
   customBase: 'https://openrouter.ai/api/v1',
   system: '', ttsOn: true, ttsEngine: 'auto', ttsVoice: 'nova', sttEngine: 'auto', vad: 'medium',
-  camAttach: true, camDevice: '', panelScale: 0.85, showCamInAR: false, jarvis: true, liveModel: '', liveVoice: 'Charon', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
+  camAttach: true, camDevice: '', panelScale: 0.62, showCamInAR: false, jarvis: true, liveModel: '', liveVoice: 'Charon', alwaysListen: true, autoCam: true, ttsModel: '', arFov: 78, arOffX: 0, arOffY: 0,
 };
 function load() {
   try {
@@ -25,6 +25,7 @@ function load() {
   } catch { return JSON.parse(JSON.stringify(DEF)); }
 }
 const S = load();
+if (S.panelScale === 0.85) S.panelScale = 0.62;
 if (!S.ladderV1) { if (/flash-latest|3\.8-flash|2\.5-flash$/.test(S.models.gemini || '')) delete S.models.gemini; S.liveModel = ''; S.ladderV1 = true; }
 const AR_LAUNCH = /[#&]ar=1/.test(location.hash);
 (() => {   // the native app opens AR mode in the Quest browser and passes the settings in the URL fragment
@@ -618,8 +619,8 @@ async function resolveLiveModel() {
 }
 // Tools the Live model can call (function calling).
 const JARVIS_TOOLS = [
-  { name: 'mark_objects',
-    description: 'Identify precisely and mark (glowing labelled box) things in the headset camera view using a high-resolution image. ALWAYS call this first whenever the user asks what something is, where something is, or to show/find/point at/identify/count something they can see, and then answer using the exact names it returns — the live video you see is low resolution.',
+  { name: 'mark_objects', slow: true,
+    description: 'Identify precisely and mark (glowing labelled box) things in the headset camera view using a high-resolution image. Call it whenever the user asks what something is, where something is, or to show/find/point at/identify/count something they can see. It runs in the background: right after calling it say a very short line like "لحظة أشوف", then when the result arrives answer with the exact names it returns — the live video you see is low resolution.',
     parameters: { type: 'OBJECT', properties: { query: { type: 'STRING', description: 'What to mark, e.g. "keyboard", "the object in front of me", "all bottles".' } }, required: ['query'] } },
   { name: 'open_app',
     description: 'Open an app installed on the Meta Quest headset by its name (for example YouTube, Browser, a game).',
@@ -732,12 +733,12 @@ async function maybeDetect(turn) {
   await runDetection(turn, turn.u.text, turn.snap);
 }
 // the middle of the frame (where the user is looking), enlarged, so small objects show their details
-function centreCrop(dataUrl, frac = 0.45) {
+function centreCrop(dataUrl, frac = 0.45, size = 512) {
   return new Promise(res => {
     const img = new Image();
     img.onload = () => {
       const w = img.naturalWidth * frac, h = img.naturalHeight * frac;
-      const c = document.createElement('canvas'); c.width = 768; c.height = Math.round(768 * h / w);
+      const c = document.createElement('canvas'); c.width = size; c.height = Math.round(size * h / w);
       c.getContext('2d').drawImage(img, (img.naturalWidth - w) / 2, (img.naturalHeight - h) / 2, w, h, 0, 0, c.width, c.height);
       res(c.toDataURL('image/jpeg', 0.85));
     };
@@ -833,7 +834,7 @@ let lastSnapT = 0;
 function snapshot() {
   const v = camVideo;
   if (!v.videoWidth) return null;
-  const sc = Math.min(1, 1024 / Math.max(v.videoWidth, v.videoHeight));
+  const sc = Math.min(1, 896 / Math.max(v.videoWidth, v.videoHeight));
   snapCanvas.width = Math.round(v.videoWidth * sc); snapCanvas.height = Math.round(v.videoHeight * sc);
   snapCanvas.getContext('2d').drawImage(v, 0, 0, snapCanvas.width, snapCanvas.height);
   lastSnapT = performance.now();
@@ -1143,6 +1144,7 @@ const core = {
 window.questaiLog = m => log('native: ' + m);
 if (SPATIAL) {
   // in the headset you see the room directly, so the in-app camera view is optional
+  document.body.classList.add('spatial');
   const applyCompact = () => document.body.classList.toggle('compact', !S.showCamInAR);
   applyCompact();
   $('size-row').hidden = false;

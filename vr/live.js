@@ -3,6 +3,7 @@
 // low-latency speech (24 kHz PCM) plus transcripts of both sides. Server-side voice detection
 // decides when the user finished speaking, and the user can interrupt the reply.
 
+const strip = ({ slow, ...t }) => t;
 const WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
 function toB64(bytes) {
@@ -46,7 +47,7 @@ export class GeminiLive {
           contextWindowCompression: { slidingWindow: {} },
           sessionResumption: this.resume ? { handle: this.resume } : {},
         };
-        if (this.tools.length) setup.tools = [{ functionDeclarations: this.tools }];
+        if (this.tools.length) setup.tools = [{ functionDeclarations: this.tuned ? this.tools.map(t => t.slow ? { ...strip(t), behavior: 'NON_BLOCKING' } : strip(t)) : this.tools.map(strip) }];
         if (this.tuned) {
           // decide sooner that the user has finished speaking
           setup.realtimeInputConfig = { automaticActivityDetection: { endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH', silenceDurationMs: 500, prefixPaddingMs: 150 } };
@@ -149,15 +150,20 @@ export class GeminiLive {
   }
 
   async runTools(calls) {
-    const responses = [];
-    for (const c of calls) {
+    // each call answers on its own, so a slow one never holds up the others
+    for (const c of calls) this.runTool(c);
+  }
+
+  async runTool(c) {
+    {
       let result;
       try { result = await this.on.tool?.(c.name, c.args || {}); }
       catch (e) { result = { error: String(e?.message || e) }; }
       this.log(`tool ${c.name}(${JSON.stringify(c.args || {}).slice(0, 80)}) → ${JSON.stringify(result).slice(0, 80)}`);
-      responses.push({ id: c.id, name: c.name, response: { result: result ?? 'done' } });
+      // INTERRUPT: say the result as soon as it is ready, even mid-sentence
+      const response = this.tuned ? { result: result ?? 'done', scheduling: 'INTERRUPT' } : { result: result ?? 'done' };
+      this.send({ toolResponse: { functionResponses: [{ id: c.id, name: c.name, response }] } });
     }
-    this.send({ toolResponse: { functionResponses: responses } });
   }
 
   /** A session can go half-dead: the socket stays open but nothing comes back. */
