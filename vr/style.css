@@ -171,8 +171,18 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .switch input:checked + i { background: var(--acc); }
 .switch input:checked + i::after { transform: translateX(18px); background: var(--acc-ink); }
 [dir=rtl] .switch input:checked + i::after { transform: translateX(-18px); }
+.diag { margin: 0; padding: 12px 14px; max-height: 260px; overflow: auto; font: 11.5px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; word-break: break-word; }
 .note { color: var(--muted); font-size: 12.5px; margin: 8px 4px 0; }
 
+input[type=range] { accent-color: var(--acc); padding: 0 !important; border: 0 !important; background: none !important; }
+output { min-width: 34px; text-align: center; color: var(--muted); font-size: 12px; }
+.ar-gate { position: fixed; inset: 0; z-index: 15; display: grid; place-items: center; background: rgba(5,6,7,.92); }
+.ar-card { text-align: center; max-width: 420px; padding: 28px; }
+.ar-card b { display: block; font-size: 22px; margin: 18px 0 8px; }
+.ar-card p { color: var(--muted); margin: 0 0 22px; }
+.mark.big { width: 46px; height: 46px; border-radius: 12px; display: inline-grid; }
+.mark.big i { width: 12px; height: 12px; }
+.pill.big { height: 54px; padding: 0 34px; font-size: 17px; border-radius: 14px; }
 canvas.xr { position: fixed; inset: 0; z-index: 20; }
 
 /* ---------- narrow screens ---------- */

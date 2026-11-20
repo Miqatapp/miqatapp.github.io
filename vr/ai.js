@@ -79,50 +79,110 @@ function toGemini(messages) {
   }));
 }
 
-/** Streams a reply. Calls onDelta(textSoFar). Returns the full text. */
-export async function chat({ provider, key, model, base, system, messages, signal, onDelta }) {
-  let full = '';
-  const push = s => { if (s) { full += s; onDelta?.(full); } };
+// Gemini 2.5/3.x "thinking" can add many seconds before the first word; keep it low for a voice assistant.
+function geminiThinking(model) {
+  if (/gemini-2\.5-(flash|pro)/.test(model)) return { thinkingConfig: { thinkingBudget: /pro/.test(model) ? 128 : 0 } };
+  if (/gemini-([3-9]|\d\d)/.test(model)) return { thinkingConfig: { thinkingLevel: 'low' } };
+  return {};
+}
 
+function request(provider, { key, model, base, system, messages }, stream, noThinking) {
   if (provider === 'openai' || provider === 'custom') {
-    const url = (provider === 'openai' ? 'https://api.openai.com/v1' : trimBase(base)) + '/chat/completions';
-    const r = await fetch(url, {
-      method: 'POST', signal,
+    return {
+      url: (provider === 'openai' ? 'https://api.openai.com/v1' : trimBase(base)) + '/chat/completions',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
-      body: JSON.stringify({ model, stream: true, messages: toOpenAI(messages, system) }),
-    });
-    if (!r.ok) throw await failure(r);
-    for await (const ev of sse(r, signal)) push(ev.choices?.[0]?.delta?.content);
-    return full;
+      body: { model, stream, messages: toOpenAI(messages, system) },
+    };
   }
-
   if (provider === 'anthropic') {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', signal,
+    return {
+      url: 'https://api.anthropic.com/v1/messages',
       headers: { 'Content-Type': 'application/json', ...ANTHROPIC_HEADERS(key) },
-      body: JSON.stringify({ model, max_tokens: 2048, stream: true, ...(system ? { system } : {}), messages: toAnthropic(messages) }),
-    });
-    if (!r.ok) throw await failure(r);
-    for await (const ev of sse(r, signal)) {
-      if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') push(ev.delta.text);
-      if (ev.type === 'error') throw new Error(ev.error?.message || 'stream error');
-    }
-    return full;
+      body: { model, max_tokens: 2048, stream, ...(system ? { system } : {}), messages: toAnthropic(messages) },
+    };
   }
-
   if (provider === 'gemini') {
-    const r = await fetch(`${GEMINI}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-      method: 'POST', signal,
+    const gen = noThinking ? {} : geminiThinking(model);
+    return {
+      url: `${GEMINI}/models/${encodeURIComponent(model)}:${stream ? 'streamGenerateContent?alt=sse' : 'generateContent'}`,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}), contents: toGemini(messages) }),
-    });
-    if (!r.ok) throw await failure(r);
-    for await (const ev of sse(r, signal)) {
-      for (const p of ev.candidates?.[0]?.content?.parts || []) if (!p.thought) push(p.text);
-    }
-    return full;
+      body: {
+        ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+        contents: toGemini(messages),
+        ...(Object.keys(gen).length ? { generationConfig: gen } : {}),
+      },
+    };
   }
   throw new Error('unknown provider');
+}
+
+function textOf(provider, j) {
+  if (provider === 'anthropic') return (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  if (provider === 'gemini') return (j.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
+  return j.choices?.[0]?.message?.content || '';
+}
+
+export class TimeoutError extends Error { constructor(m) { super(m); this.name = 'TimeoutError'; this.timeout = true; } }
+
+/**
+ * Streams a reply (onDelta(textSoFar)) and returns the full text.
+ * If no text arrives within firstTokenMs, the stream is dropped and the request is retried
+ * without streaming (some networks/WebViews buffer event streams). Every step has a timeout.
+ */
+export async function chat(opts) {
+  const { provider, signal, onDelta, log = () => {}, firstTokenMs = 15000, totalMs = 90000, preferStream = true, onStreamBroken } = opts;
+  let noThinking = false;
+  const run = async (stream) => {
+    const ctl = new AbortController();
+    const onOuter = () => ctl.abort();
+    signal?.addEventListener('abort', onOuter);
+    let timedOut = false, gotText = false;
+    const arm = ms => setTimeout(() => { timedOut = true; ctl.abort(); }, ms);
+    let timer = arm(stream ? firstTokenMs : totalMs);
+    try {
+      const rq = request(provider, opts, stream, noThinking);
+      const r = await fetch(rq.url, { method: 'POST', signal: ctl.signal, headers: rq.headers, body: JSON.stringify(rq.body) });
+      if (!r.ok) throw await failure(r);
+      if (!stream) return textOf(provider, await r.json());
+      let full = '';
+      for await (const ev of sse(r, ctl.signal)) {
+        let piece = '';
+        if (provider === 'anthropic') {
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') piece = ev.delta.text;
+          if (ev.type === 'error') throw new Error(ev.error?.message || 'stream error');
+        } else if (provider === 'gemini') {
+          for (const p of ev.candidates?.[0]?.content?.parts || []) if (!p.thought && p.text) piece += p.text;
+        } else piece = ev.choices?.[0]?.delta?.content || '';
+        if (piece) {
+          if (!gotText) { gotText = true; clearTimeout(timer); timer = arm(totalMs); log('first text'); }
+          full += piece; onDelta?.(full);
+        }
+      }
+      return full;
+    } catch (e) {
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      if (timedOut) { const te = new TimeoutError(gotText ? 'reply too slow' : 'no reply'); te.partial = gotText; throw te; }
+      throw e;
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', onOuter); }
+  };
+
+  if (!preferStream) { const text = await run(false); onDelta?.(text); return text; }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run(true);
+    } catch (e) {
+      // an unknown thinking option → retry once without it
+      if (!noThinking && e?.status === 400 && /thinking/i.test(e.message)) { noThinking = true; log('retry without thinking config'); continue; }
+      if (e?.timeout && !e.partial && attempt === 0) {
+        log('stream gave nothing in ' + Math.round(firstTokenMs / 1000) + 's → retry without streaming');
+        onStreamBroken?.();
+        const text = await run(false);
+        onDelta?.(text);
+        return text;
+      }
+      throw e;
+    }
+  }
 }
 
 /** Lists model ids — doubles as an API key test. */
@@ -150,14 +210,14 @@ export async function transcribe(wav, { engine, openaiKey, geminiKey, geminiMode
     const fd = new FormData();
     fd.append('file', wav, 'speech.wav');
     fd.append('model', 'whisper-1');
-    const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + openaiKey }, body: fd });
+    const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + openaiKey }, body: fd, signal: AbortSignal.timeout(30000) });
     if (!r.ok) throw await failure(r);
     return ((await r.json()).text || '').trim();
   }
   if (!geminiKey) throw new Error('Gemini key missing');
   const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(b64(fr.result)); fr.onerror = rej; fr.readAsDataURL(wav); });
-  const r = await fetch(`${GEMINI}/models/${encodeURIComponent(geminiModel || 'gemini-2.5-flash')}:generateContent`, {
-    method: 'POST',
+  const r = await fetch(`${GEMINI}/models/${encodeURIComponent(geminiModel || 'gemini-flash-latest')}:generateContent`, {
+    method: 'POST', signal: AbortSignal.timeout(30000),
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
     body: JSON.stringify({ contents: [{ role: 'user', parts: [
       { text: 'Transcribe this audio verbatim in its original language. Output only the transcript, nothing else. If there is no speech, output nothing.' },

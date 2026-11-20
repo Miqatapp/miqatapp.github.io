@@ -216,6 +216,18 @@ public class MainActivity extends Activity {
       });
     }
 
+    /** Opens a https link in the Quest browser (used for AR mode, which needs WebXR). */
+    @JavascriptInterface public void openUrl(String url) {
+      if (url == null || !url.startsWith("https://")) return;
+      runOnUiThread(() -> {
+        try {
+          Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+          i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          startActivity(i);
+        } catch (Exception e) { Log.w(TAG, "openUrl", e); }
+      });
+    }
+
     @JavascriptInterface public boolean canSpeak() { return ttsReady; }
 
     @JavascriptInterface public void speak(String text, String lang, String id) {

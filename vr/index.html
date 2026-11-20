@@ -86,6 +86,15 @@
   </nav>
 </div>
 
+<div id="ar-gate" class="ar-gate" hidden>
+  <div class="ar-card">
+    <span class="mark big"><i></i></span>
+    <b data-i="arGateTitle"></b>
+    <p data-i="arGateBody"></p>
+    <button id="ar-go" class="pill solid big" data-i="arGateGo"></button>
+  </div>
+</div>
+
 <div id="sheet" class="sheet" hidden>
   <div class="sheet-scrim" id="sheet-scrim"></div>
   <div class="sheet-panel" role="dialog" aria-modal="true">
@@ -145,6 +154,15 @@
 
       <h4 class="mono" data-i="system"></h4>
       <div class="group"><div class="row col"><textarea id="system" rows="5"></textarea></div></div>
+      <h4 data-i="arCal"></h4>
+      <div class="group">
+        <div class="row"><label for="ar-fov" data-i="arFov"></label><input id="ar-fov" type="range" min="55" max="110" step="1"><output id="ar-fov-v" class="mono"></output></div>
+        <div class="row"><label for="ar-offx" data-i="arOffX"></label><input id="ar-offx" type="range" min="-12" max="12" step="0.5"><output id="ar-offx-v" class="mono"></output></div>
+        <div class="row"><label for="ar-offy" data-i="arOffY"></label><input id="ar-offy" type="range" min="-12" max="12" step="0.5"><output id="ar-offy-v" class="mono"></output></div>
+      </div>
+      <p class="note" data-i="arCalHint"></p>
+      <h4 data-i="diagnostics"></h4>
+      <div class="group"><pre id="diag" class="diag ltr"></pre></div>
       <p class="note mono">Quest AI · <span id="version"></span></p>
     </div>
   </div>

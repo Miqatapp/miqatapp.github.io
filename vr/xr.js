@@ -237,6 +237,133 @@ export async function createXR(core) {
     ui.position.copy(v1).addScaledVector(v2, 1.25); ui.position.y = Math.max(v1.y - 0.1, 0.8);
     ui.lookAt(v1.x, ui.position.y, v1.z);
   }
+  /* ---------- AR: boxes anchored on real objects ---------- */
+  // Head poses are recorded every frame so a box can be projected from where the head was
+  // when the camera frame was taken. Depth comes from WebXR hit-testing (room mesh / planes);
+  // without a hit the box is placed at 1.5 m.
+  const poses = [];
+  const markers = [];
+  const pendingHits = [];
+  function recordPose(t) {
+    const cam = renderer.xr.getCamera();
+    poses.push({ t, m: cam.matrixWorld.clone() });
+    while (poses.length && t - poses[0].t > 4000) poses.shift();
+  }
+  function poseAt(t) {
+    let best = null;
+    for (const p of poses) if (!best || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+    return best?.m || renderer.xr.getCamera().matrixWorld.clone();
+  }
+  function markerTexture(label, i) {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    return { c, g: c.getContext('2d'), tex, label, i };
+  }
+  function drawMarker(mk, pulse) {
+    const { g, c } = mk.t; const W = c.width, H = c.height, pad = 40, L = 90;
+    g.clearRect(0, 0, W, H);
+    const gr = g.createLinearGradient(0, pad, 0, H - pad);
+    gr.addColorStop(0, 'rgba(212,255,63,.16)'); gr.addColorStop(1, 'rgba(212,255,63,.04)');
+    g.fillStyle = gr; g.fillRect(pad, pad, W - 2 * pad, H - 2 * pad);
+    g.shadowColor = 'rgba(212,255,63,1)'; g.shadowBlur = 18 + 22 * pulse;
+    g.strokeStyle = LIME; g.lineWidth = 14; g.lineCap = 'square';
+    g.beginPath();
+    for (const [x, y, dx, dy] of [[pad, pad, 1, 1], [W - pad, pad, -1, 1], [pad, H - pad, 1, -1], [W - pad, H - pad, -1, -1]]) {
+      g.moveTo(x, y + dy * L); g.lineTo(x, y); g.lineTo(x + dx * L, y);
+    }
+    g.stroke(); g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(212,255,63,.45)'; g.lineWidth = 3; g.strokeRect(pad, pad, W - 2 * pad, H - 2 * pad);
+    mk.t.tex.needsUpdate = true;
+  }
+  function labelPlane(text, i) {
+    const p = canvasPlane(0.5, 0.075, 1100);
+    const { g, c, tex } = p;
+    const tag = `${String(i + 1).padStart(2, '0')}  ${text}`;
+    g.font = `600 50px ${FONT}`; g.direction = isRTL(text) ? 'rtl' : 'ltr';
+    const tw = Math.min(c.width, g.measureText(tag).width + 60);
+    g.shadowColor = 'rgba(212,255,63,.9)'; g.shadowBlur = 20;
+    g.fillStyle = LIME; roundRect(g, (c.width - tw) / 2, 6, tw, c.height - 12, 14); g.fill(); g.shadowBlur = 0;
+    g.fillStyle = '#0e1200'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(tag, c.width / 2, c.height / 2 + 3);
+    tex.needsUpdate = true;
+    p.mesh.material.depthTest = false; p.mesh.renderOrder = 10;
+    return p.mesh;
+  }
+  function clearMarkers() {
+    for (const mk of markers) { scene.remove(mk.group); mk.t.tex.dispose(); }
+    markers.length = 0;
+    for (const h of pendingHits) h.source?.cancel?.();
+    pendingHits.length = 0;
+  }
+  const DEG = Math.PI / 180;
+  function placeBoxes(boxes, snapT, imgW, imgH) {
+    if (!renderer.xr.isPresenting) return;
+    clearMarkers();
+    const head = poseAt(snapT ?? performance.now());
+    const origin = new THREE.Vector3().setFromMatrixPosition(head);
+    const rot = new THREE.Quaternion().setFromRotationMatrix(head);
+    const hf = (S.arFov || 78) * DEG, aspect = (imgW || 4) / (imgH || 3);
+    const vf = 2 * Math.atan(Math.tan(hf / 2) / aspect);
+    const session = renderer.xr.getSession(), ref = renderer.xr.getReferenceSpace();
+    boxes.forEach((b, i) => {
+      const [y0, x0, y1, x1] = b.box.map(v => Math.max(0, Math.min(1000, v)) / 1000);
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, bw = Math.abs(x1 - x0), bh = Math.abs(y1 - y0);
+      const dirCam = new THREE.Vector3(
+        Math.tan((cx - 0.5) * hf + (S.arOffX || 0) * DEG),
+        Math.tan((0.5 - cy) * vf + (S.arOffY || 0) * DEG), -1).normalize();
+      const dir = dirCam.applyQuaternion(rot).normalize();
+      const t = markerTexture(b.label, i);
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: t.tex, transparent: true, depthTest: false, depthWrite: false }));
+      plane.renderOrder = 9;
+      const tag = labelPlane(b.label, i);
+      const group = new THREE.Group(); group.add(plane, tag); scene.add(group);
+      const mk = { group, plane, tag, t, origin, dir, bw, bh, hf, vf, born: performance.now(), dist: 1.5 };
+      setDistance(mk, 1.5);
+      markers.push(mk);
+      // ask the headset where this ray meets the room
+      if (session?.requestHitTestSource && window.XRRay) {
+        const ray = new XRRay({ x: origin.x, y: origin.y, z: origin.z, w: 1 }, { x: dir.x, y: dir.y, z: dir.z, w: 0 });
+        const h = { mk, source: null, until: performance.now() + 1500 };
+        pendingHits.push(h);
+        session.requestHitTestSource({ space: ref, offsetRay: ray }).then(src => { h.source = src; }).catch(() => { h.until = 0; });
+      }
+    });
+  }
+  function setDistance(mk, d) {
+    mk.dist = d;
+    const pos = mk.origin.clone().addScaledVector(mk.dir, d * 0.97);   // just in front of the surface
+    const w = 2 * d * Math.tan(mk.hf / 2) * mk.bw, h = 2 * d * Math.tan(mk.vf / 2) * mk.bh;
+    mk.group.position.copy(pos);
+    mk.group.lookAt(mk.origin);
+    mk.plane.scale.set(Math.max(0.03, w), Math.max(0.03, h), 1);
+    const tagW = Math.min(0.6, Math.max(0.16, d * 0.18));
+    mk.tag.scale.set(tagW / 0.5, tagW / 0.5, 1);
+    mk.tag.position.set(0, Math.max(0.03, h) / 2 + 0.02 + 0.075 * tagW / 0.5 / 2, 0.001);
+  }
+  function updateMarkers(time) {
+    const frame = renderer.xr.getFrame();
+    for (let k = pendingHits.length - 1; k >= 0; k--) {
+      const h = pendingHits[k];
+      const res = h.source && frame ? frame.getHitTestResults(h.source) : [];
+      if (res.length) {
+        const p = res[0].getPose(renderer.xr.getReferenceSpace());
+        if (p) setDistance(h.mk, new THREE.Vector3(p.transform.position.x, p.transform.position.y, p.transform.position.z).distanceTo(h.mk.origin));
+      }
+      if (res.length || time > h.until) { h.source?.cancel?.(); pendingHits.splice(k, 1); }
+    }
+    for (let k = markers.length - 1; k >= 0; k--) {
+      const mk = markers[k], age = time - mk.born;
+      if (age > 45000) { scene.remove(mk.group); markers.splice(k, 1); continue; }
+      const appear = Math.min(1, age / 400), fade = Math.min(1, (45000 - age) / 2000);
+      const pulse = 0.5 + 0.5 * Math.sin(time / 260 + mk.t.i);
+      if (Math.round(time / 50) !== mk.lastDraw) { mk.lastDraw = Math.round(time / 50); drawMarker(mk, pulse); }
+      mk.plane.material.opacity = appear * fade;
+      mk.tag.material.opacity = appear * fade;
+      const grow = 1 + (1 - appear) * 0.15;
+      mk.group.scale.setScalar(grow);
+    }
+  }
+
   function frame(time) {
     const dt = Math.min(0.1, (time - lastT) / 1000 || 0); lastT = time;
     if (needsRecenter) { renderer.xr.getCamera().getWorldPosition(v1); if (v1.lengthSq() > 0) { recenter(); needsRecenter = false; } }
@@ -278,6 +405,7 @@ export async function createXR(core) {
     orb.scale.setScalar(1 + lvl * 0.6);
     ring.scale.setScalar(1 + lvl * 0.9 + 0.05 * Math.sin(time / 300));
     ring.rotation.z += dt * (st === 'thinking' || st === 'looking' ? 3 : 0.3);
+    recordPose(time); updateMarkers(time);
     relabel(); drawPanel();
     if (core.camOn) drawHudLayer();
     renderer.render(scene, camera);
@@ -285,8 +413,9 @@ export async function createXR(core) {
 
   return {
     presenting: () => renderer.xr.isPresenting,
+    placeBoxes, clearMarkers,
     async enter(mode) {
-      const session = await navigator.xr.requestSession(mode, { requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking'] });
+      const session = await navigator.xr.requestSession(mode, { requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking', 'hit-test'] });
       renderer.xr.setReferenceSpaceType('local-floor');
       await renderer.xr.setSession(session);
       const ar = mode === 'immersive-ar';
