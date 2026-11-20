@@ -3,7 +3,7 @@ import { GeminiLive } from './live.js';
 import { t as tr, BOX_INSTRUCTIONS } from './i18n.js';
 import { Tracker } from './tracker.js';
 
-const VERSION = '5.4';
+const VERSION = '5.5';
 let streamBroken = false; // set when this network/WebView never delivers event streams
 const $ = id => document.getElementById(id);
 const NATIVE = typeof window.QuestAINative !== 'undefined';
@@ -746,7 +746,26 @@ function centreCrop(dataUrl, frac = 0.45, size = 512) {
     img.src = dataUrl;
   });
 }
+// Headset: move the room markers with the tracked objects (~10×/s), and look again if one is lost.
+let lastDetectQuestion = '';
+function followInRoom(now) {
+  if (now - (hud.lastMove || 0) < 100) return;
+  hud.lastMove = now;
+  const view = tracker.view(0.1).filter(b => !b.lost && !tracker.items.find(it => it.i === b.i)?.flat);
+  if (view.length) {
+    window.QuestAINative.moveBoxes(JSON.stringify({ boxes: view.map(b => ({ i: b.i, box: [b.y * 1000, b.x * 1000, (b.y + b.h) * 1000, (b.x + b.w) * 1000] })) }));
+  }
+  const lost = tracker.items.some(it => it.lost);
+  if (!lost) { hud.lostSince = 0; return; }
+  hud.lostSince ||= now;
+  // lost for a second → ask the model to find it again (at most every 4 s, for 40 s)
+  if (now - hud.lostSince > 1000 && now - (hud.lastRedetect || 0) > 4000 && now - (tracker.items[0]?.born || now) < 40000 && hud.trackQ && !detecting) {
+    hud.lastRedetect = now;
+    runDetection({ u: null, a: null }, hud.trackQ, snapshotNow());
+  }
+}
 async function runDetection(turn, question, snap) {
+  lastDetectQuestion = question;
   if (!snap?.image) return [];
   turn.detected = true; detecting = true; bump();
   const t0 = performance.now();
@@ -868,7 +887,8 @@ const tracker = new Tracker();
 // The model boxes objects on the frame it saw; the tracker then follows them live.
 function showBoxes(boxes, img, snapT) {
   const go = () => {
-    if (!SPATIAL) tracker.start(boxes, img);   // headset: the marker is in the room, not on the app screen
+    tracker.start(boxes, img);   // headset: tracked in the background and the room marker follows it
+    hud.trackQ = lastDetectQuestion; hud.lostSince = 0;
     if (xr?.presenting()) xr.placeBoxes(boxes, snapT, img.naturalWidth, img.naturalHeight);  // pin on the real object
     if (SPATIAL) {   // native passthrough: the marker appears on the real object in the room
       window.QuestAINative.placeBoxes(JSON.stringify({
@@ -958,10 +978,12 @@ function drawHUD(now) {
       const sr = { x: ox + b.x * vw * sc, y: oy + b.y * vh * sc, w: b.w * vw * sc, h: b.h * vh * sc };
       const grow = (1 - ease) * 0.12;
       sr.x -= sr.w * grow / 2; sr.y -= sr.h * grow / 2; sr.w *= 1 + grow; sr.h *= 1 + grow;
+      if (SPATIAL) continue;               // headset: no box on the app screen
       hg.globalAlpha = b.lost ? 0.3 : 1;   // lost: dim until re-acquired
       drawBox(hg, sr, b.label, b.i, ease);
     }
     hg.globalAlpha = 1;
+    if (SPATIAL) followInRoom(now);
   }
   hud.lastT = now;
 }
